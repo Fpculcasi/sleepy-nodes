@@ -28,11 +28,12 @@
 	#define PRINTLLADDR(addr)
 #endif
 
+/* FIXME: This server address is hard-coded for Cooja and link-local for unconnected border router. */
+#define SERVER_NODE(ipaddr)	 uip_ip6addr(ipaddr, 0xaaaa, 0, 0, 0, 0x0212, 0x7401, 0x0001, 0x0101)			/* cooja2 */
+/* #define SERVER_NODE(ipaddr)	 uip_ip6addr(ipaddr, 0xbbbb, 0, 0, 0, 0, 0, 0, 0x1) */
 
-#define SERVER_NODE(ipaddr)	uip_ip6addr(ipaddr, 0xaaaa, 0, 0, 0, 0x0212, 0x7401, 0x0001, 0x0101)
-
-#define LOCAL_PORT		UIP_HTONS(COAP_DEFAULT_PORT + 1)
-#define REMOTE_PORT		UIP_HTONS(COAP_DEFAULT_PORT)
+#define LOCAL_PORT			UIP_HTONS(COAP_DEFAULT_PORT + 1)
+#define REMOTE_PORT		 UIP_HTONS(COAP_DEFAULT_PORT)
 
 #define TOGGLE_INTERVAL 3
 
