@@ -7,7 +7,12 @@
 
 package org.eclipse.californium.proxy;
 
+import java.net.Inet6Address;
+import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
+
 import org.eclipse.californium.core.CoapServer;
+import org.eclipse.californium.core.network.CoapEndpoint;
 
 /**
  * Proxy is a basic implementation of a CoapServer.
@@ -31,8 +36,10 @@ public class Proxy extends CoapServer {
 	
 	public static void main(String[] args) {
 		Proxy proxy = new Proxy();
-		
+		proxy.addEndpoint(new CoapEndpoint(new InetSocketAddress(
+				"aaaa::1", 5683)));
 		proxy.start();
+
 	}
 	
 	@Override

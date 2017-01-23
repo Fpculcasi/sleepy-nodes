@@ -27,7 +27,7 @@ import static org.eclipse.californium.core.coap.MediaTypeRegistry.APPLICATION_JS
  */
 public class SPResource extends CoapResource {
 	public SPResource(){
-		super("/sp", true);
+		super("sp", true);
 		
 		getAttributes().setTitle("Sleepy Proxy Resource");
 		getAttributes().addAttribute("rt", "core.sp");
