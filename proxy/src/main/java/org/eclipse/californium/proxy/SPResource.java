@@ -27,7 +27,7 @@ import static org.eclipse.californium.core.coap.MediaTypeRegistry.APPLICATION_JS
  */
 public class SPResource extends CoapResource {
 	public SPResource(){
-		super("/sp");
+		super("/sp", true);
 		
 		getAttributes().setTitle("Sleepy Proxy Resource");
 		getAttributes().addAttribute("rt", "core.sp");
@@ -41,6 +41,7 @@ public class SPResource extends CoapResource {
 	 * payload including the name and the list of the attribute-value pairs 
 	 * of the resource's attributes.
 	 */
+	/*
     @Override
     public void handleGET(CoapExchange exchange) {
         System.out.println("SleepyProxyResource.handleGet called. Handled"
@@ -56,6 +57,7 @@ public class SPResource extends CoapResource {
         exchange.respond(CoAP.ResponseCode.CONTENT, 
         		"<" + getName() + ">" + attributes, APPLICATION_JSON);
     }
+    */
     
     /*
     public static void main(String[] args){
