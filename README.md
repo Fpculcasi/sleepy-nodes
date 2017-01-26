@@ -1,37 +1,39 @@
 # sleepy-nodes
 ##ANAWS project, Fall 2016
 
-**Sleepy node draft RFC**: <https://tools.ietf.org/html/draft-zotti-core-sleepy-nodes-04>
-Nel testo sono presenti, tra parentesi quadre, i referimenti ai relativi paragrafi del draft RFC.
+This file contains, in squared brackets, references to paragraphs of the following draft RFC:
+
+**Sleepy CoAP Node** draft RFC: <https://tools.ietf.org/html/draft-zotti-core-sleepy-nodes-04>
 
 ---
 
-###ASSUNZIONI:
--	Tralasciamo l'implementazione del Resourse Directory (RD).
--	Tralasciamo i meccanismi di sicurezza (ad esempio accertarsi che una PUT fatta su un proxy provenga effettivamente da uno sleepy node e non sia stata fatta invece da un qualsiasi altro nodo, che magari vuole avvelenare il valore di quella risorsa su quel proxy).
--	Non avendo a disposizione il multicast in contiki, il discovery del proxy da parte degli sleepy node e dei regular node viene fatto in unicast usando l'indirizzo del proxy (stiamo quindi supponendo di conoscere l'indirizzo del proxy). [5.1]
--	Supponiamo, almeno inizialmente, di avere unsolo proxy nella rete;  il codice verrà comunque pensato per poter supportare la presenza di più proxy.
--	Il proxy è situato sulla stessa macchina che sta funzionando da gateway.
-Cerchiamo di sviluppare il codice sottoforma di interfaccia, in modo tale che l'utente che voglia programmare un sensore non si debba preoccupare del protocollo che sta alla base della sincronizzazione tra proxy e sleepy node; per l'utente sarà sufficiente definire delle risorse e registrarle al proxy tramite un'apposita interfaccia (esempio: register_to_proxy(risorsa, proxy_ipv6)).
+###ASSUMPTIONS:
+-	Resourse Directory (RD) implementation has been omitted.
+-	Also security mechanisms are omitted (for istance the check on a PUT on a proxy coming from something different than a Sleepy node, trying to poisoning that resource).
+-	Since as of now the multicast implementation in contiki is not reliable, Proxy discovery procedure is performed in unicast with proxy address (proxy address is known). [5.1]
+-	We assume to have only one proxy in the network; even though the code is written to support the presence of multiple proxies.
+-	The Proxy service is supposed to run on the same machine that is acting as gateway.
+
+We are looking for an interfaces definition, so that the user willing to program a sleepy sensor has no worries about the protocol underlying the sinchronization between Proxy and Sleepy node; users only need to define resources and to registate to the Proxy with the specific interface (e.g. `register_to_proxy(resource, proxy_ipv6)`).
 
 ###SCENARIO:
--	Per gli sleepy node, l'interfaccia SYNCHRONIZE viene implementata come aggiunta al codice di Contiki.
--	Il proxy viene implementato tramite il framework Californium.
--	Il regular node viene simulato tramite interfaccia CoAP di firefox.
+-	For Sleepy nodes SYNCHRONIZE interface is implemented by means of some additions to the Contiki code.
+-	Proxy is implemented using Californium framework.
+-	The Regular node is simulated by CoAP interface of Firefox ([Copper](https://addons.mozilla.org/en-us/firefox/addon/copper-270430/?src=dp-dl-othersby) plug-in).
 
-####Interfaccia SYNCHRONIZE
--	Predisponiamo uno sleepy node che crea un set di risorse e si registra con il proxy delegandogliele. NOTA: lo sleepy node può registrare risorse diverse (o anche la stessa) su proxy diversi. [5.2, 5.4]
--	Lo sleepy node entra in un ciclo che esegue le seguenti operazioni:
-  -	chiede quali risorse da lui delegate sono state modificate sul proxy; [5.6]
-  -	se la lista non è vuota, richiede al proxy l'invio dei valori aggiornati (per la maggior parte questi aggiornamenti saranno richieste di modifica di configurazione), e aggiorna conseguentemente il valore delle risorse locali; [5.6]
-  -	legge i valori campionati dai suoi sensori ed aggiorna conseguentemente il valore delle relative risorse locali; [5.5]
-  -	invia il valore delle risorse (esempio: temperatura) al proxy; [5.5]
-  -	si addormenta per un certo lasso di tempo.
--	Il proxy deve istanziare un nuovo oggetto di una classe che estende CoapResource per ogni risorsa delegata. La classe avrà i metodi necessari a gestire le richieste, che potranno essere di update (PUT) o di lettura (GET), e a rispondere. Queste risorse sono tuttavia diverse da quelle vere, sono solo delle risorse "tampone" che servono per memorizzare gli aggiornamenti che avvengono mentre lo sleepy node è sleepy.
+####SYNCHRONIZE Interface
+-	A Sleepy Node creates a resources set and registrates to the Proxy. N.B.: the Sleepy Node can registrate its own different resources (or just one) to several Proxies. [5.2, 5.4]
+-	Sleepy Node cycles infinitely on a while loop in which:
+  - it asks which of its delegated resource have been modified on Proxy; [5.6]
+  - if the list is not empty, it asks to Proxy for the updated values (mostly configuration update requests), and it consequently updates the value on local resources; [5.6]
+  - it reads sampled values from its own sensors and updates the content of the respective local resources; [5.5]
+  - it sends resource values (e.g. temperature) to Proxy; [5.5]
+  - fall asleep for a certain time.
+-	Proxy has to instanciate a new object extending CoapResource for each delegated resource. This resource implements the needed methods for handling requests, for instance update (PUT) or read (GET), e to respond. These new resources are an artefacted copy of the true ones on Sleepy Nodes, used to store updates coming while a Sleepy Node is sleepy.
 
-####Intefaccia DELEGATE
--	Il regular node è simulato tramite apposita interfaccia web per inviare/ricevere messaggi CoAP (plugin di firefox).
--	Il regular node esegue il discovery delle risorse delegate dagli sleepy node sui proxy. La richiesta è fatta in unicast verso un proxy noto. [6.1, con unicast invece che multicast]
--	Il proxy risponderà con un elenco di elementi del tipo <risorsa, sleepy node su cui la risorsa è situata>. [6.1]
--	Il regular node farà la richiesta al proxy per una specifica risorsa situata su un particolare endpoint. [6.1]
--	Se il regular node fa observe su  una risorsa delegata su un proxy, il proxy accetterà tale richiesta e, nel momento in cui lo sleepy node aggiornerà la sua risorsa sul proxy, questo notificherà tutti gli osservatori della modifica effettuata. [6.2]
+####DELEGATE Interface
+-	A Regular Node is implemented through a specific web interface able to send/receive CoAP messages (Copper).
+-	A Regular Node performs discovery of Sleepy Node delegated resources on Proxy. the request is sent in unicast to the known Porxy. [6.1, unicast rather than multicast]
+-	Proxies answer with a list of elements such <resource, origin sleepy node>. [6.1]
+-	Regular Node requests the Proxy for a specific resource located on a praticular End Point (specifies ep attribute). [6.1]
+-	If Regular Node want to "observe" a delegated resource on Proxy, Proxy accepts the request and, at the Sleepy Node update request, notifies all the observers of the occurred change. [6.2]
