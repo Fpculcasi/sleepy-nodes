@@ -44,4 +44,8 @@
 #define UIP_CONF_MAX_ROUTES   10
 #undef UIP_CONF_BUFFER_SIZE
 #define UIP_CONF_BUFFER_SIZE    280
+
+/*More memory saving*/
+#define PROCESS_CONF_NO_PROCESS_NAMES 1
+#define UIP_CONF_TCP 0
 #endif /* PROJECT_ERBIUM_CONF_H_ */
