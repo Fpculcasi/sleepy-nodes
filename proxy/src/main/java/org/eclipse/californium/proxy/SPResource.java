@@ -12,6 +12,13 @@
  *
  *****************************************************************************/
 
+/**
+ * REFERENCES:
+ * [1] https://github.com/eclipse/californium/blob/master/californium-core/src/main/java/org/eclipse/californium/core/CoapResource.java#L518
+ * 
+ * 
+ */
+
 package org.eclipse.californium.proxy;
 
 import java.util.List;
@@ -21,12 +28,14 @@ import org.eclipse.californium.core.CoapResource;
 import org.eclipse.californium.core.coap.CoAP;
 import org.eclipse.californium.core.server.resources.CoapExchange;
 
+import static org.eclipse.californium.core.coap.MediaTypeRegistry.APPLICATION_LINK_FORMAT;
+
 /**
  * This class implements the SP (Sleepy Proxy) resource of the proxy. This
  * resource is the root of the hierarchy in which resources will be stored.
  * 
  * In the constructor:
- * The 'name' is "/sp"; the only required attribute is 'rt', resource type.
+ * The 'name' is "sp"; the only required attribute is 'rt', resource type.
  * A client performing the discovery of the proxy will filter on
  * rt=core.sp.
  * The SP resource doesn't need to be observable, since its state never
@@ -53,6 +62,7 @@ public class SPResource extends CoapResource {
 	 * payload including the name and the list of the attribute-value pairs 
 	 * of the resource's attributes.
 	 */
+	/* TODO: it's a shame, ma temo che vada tolto questo metodo, no? */
     @Override
     public void handleGET(CoapExchange exchange) {
         System.out.println("***SleepyProxyResource.handleGET called. Handled"
@@ -68,47 +78,65 @@ public class SPResource extends CoapResource {
         /*FIXME: why isn't Copper rendering the response? 
 		 *		(even if the same is correctly rendered in other instances)*/
         exchange.respond(CoAP.ResponseCode.CONTENT, 
-        		"<" + getPath()+getName() + ">" +attributes);
+        		"<" + getPath()+getName() + ">" +attributes, 
+        		APPLICATION_LINK_FORMAT);
     }
 
 	/**
 	 * The handlePOST method handles POST request performed on the SP resource.
 	 * It returns a '2.01 Created Location: /sp/-' response code, ...
 	 */
+    /* TODO: per quanto riguarda qui sopra: il reponse code e' soltanto 2.01 Created;
+     * inoltre, per chiarezza, al posto di /sp/- metterei /sp/x 
+     * 
+     */
     @Override
     public void handlePOST(CoapExchange exchange) {
     	System.out.println("***SleepyProxyResource.handlePOST called. Handled"
     		+ "	by thread" + java.lang.Thread.currentThread().toString());
 
-    	List<String> uriQuerys = exchange.getRequestOptions().getUriQuery();
+    	// We retrieve queries contained in the URI
+    	// TODO: ho cambiato uriQuerys con uriQueries
+    	List<String> uriQueries = exchange.getRequestOptions().getUriQuery();
     	SNResourceAttributes queryAttributes = new SNResourceAttributes();
     	
-    	for(String query: uriQuerys){
+    	// We fill a attribute-value maps with the value found in the query
+    	for(String query: uriQueries){
     		String keyValue[] = query.split("=",2);
         	queryAttributes.addAttribute(keyValue[0],keyValue[1]);
     	}
     	String epValue = queryAttributes.getEndPoint();
     	
     	if(epValue == null) {
-    		// can't find the end point identifier
+    		// the endpoint value was not specified in the query
     		exchange.respond(CoAP.ResponseCode.BAD_REQUEST);
     		return;
     	}
     	
-        Map<String, DelegatedResource> EPs = proxy.getEPs();
-        DelegatedResource resource = EPs.get(epValue);
-        if(resource == null){ // the node has never delegated before
+    	/* The endpoint was specified. We try to understand if this
+    	 * endpoint already registered with this proxy. If that is the case,
+    	 * in the following map there will be a corresponding DelegatedResource
+    	 */
+        Map<String, LocationResource> EPs = proxy.getEPs();
+        LocationResource locationResource = EPs.get(epValue);
+        
+        if(locationResource == null){ // the node has never delegated before
+        	// TODO: ma sara' safe fare una cosa del genere? non 
+        	// sarebbe meglio mettere un bel .toString?
+        	// Anche newName non mi piace molto, sarebbe meglio, chesso',
+        	// sleepyNodeLocalId o sleepyNodeContainerId
         	String newName = "" + proxy.newEPId();
-        	resource = new DelegatedResource(newName, queryAttributes);
+        	locationResource = new LocationResource(newName, queryAttributes);
         	
-        	
-        	EPs.put(epValue, resource);
-        	add(resource);
-        	System.out.println("[Added] " + newName + " (visible: " + resource.isVisible() + ") "
-                	+ resource.getName() + "\n-"
-        			+ resource.getPath() + "\n-"
-        			+ resource.getURI() + "\n"
-        			+ queryAttributes );
+        	EPs.put(epValue, locationResource);
+        	// Add the newly created resource as child of *this* (SP) resource
+        	add(locationResource);
+
+            System.out.println("[Added] " + newName + " (visible: "
+              + locationResource.isVisible() + ") " + locationResource.getName()
+              + "\n-" + locationResource.getPath()
+              + "\n-" + locationResource.getURI()
+              + "\n" + queryAttributes );
         }
         
         /* Generate location for the new resources */
@@ -125,23 +153,27 @@ public class SPResource extends CoapResource {
         	}
         	String newName = fields[0].replace("<","").replace(">","");
         	
-        	/* remove the first '/', it will be add by CoapResource setParent()
-        	 * https://github.com/eclipse/californium/blob/master/
-        	 * californium-core/src/main/java/org/eclipse/californium/core/
-        	 * CoapResource.java#L518 */
+        	/* remove the first '/', it will be add by CoapResource setParent(),
+        	 * see [1] */
         	newName = newName.substring(1);
         	
         	DelegatedResource newResource =
         			new DelegatedResource(newName, attributes, true/*false*/);
         	
-        	resource.add(newResource);
-        	System.out.println("[Added] " + newName + " (visible: "
-        			+ newResource.isVisible() + ") "
-                	+ newResource.getName() + "\n-"
-        			+ newResource.getPath() + "\n-"
-        			+ newResource.getURI() + "\n"
-        			+ attributes );
+        	// I add the newly created resources to the resource container
+        	locationResource.add(newResource);
+
+            System.out.println("[Added] " + newName + " (visible: "
+              + newResource.isVisible() + ") " + newResource.getName()
+              + "\n-" + newResource.getPath()
+              + "\n-" + newResource.getURI()
+              + "\n" + attributes );
         }
+        
+        /* I add the "Location" option to the answer, 
+         * set with the URI of the resource container
+         */
+        exchange.setLocationPath(locationResource.getURI());
 		exchange.respond(CoAP.ResponseCode.CREATED);
         
     }

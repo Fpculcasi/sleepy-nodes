@@ -1,0 +1,77 @@
+/******************************************************************************
+ * @title: Location Resource
+ * 	The resource storing the delegated resources of a given endpoint
+ * 
+ * @authors:
+ * 	- Francesco Paolo Culcasi	<fpculcasi@gmail.com>
+ * 	- Alessandro Martinelli		<a.martinelli1990@gmail.com>
+ * 	- Nicola Messina			<nicola.messina93@gmail.com>
+ * 
+ * @for: Advanced topics in Network Architectures and Wireless Systems
+ * 	UNIPI (2016/2017)
+ *
+ *****************************************************************************/
+package org.eclipse.californium.proxy;
+
+import java.util.List;
+import org.eclipse.californium.core.CoapResource;
+import org.eclipse.californium.core.coap.CoAP.ResponseCode;
+import org.eclipse.californium.core.coap.LinkFormat;
+import org.eclipse.californium.core.coap.MediaTypeRegistry;
+import org.eclipse.californium.core.server.resources.CoapExchange;
+import org.eclipse.californium.core.server.resources.Resource;
+
+/**
+ * The LocationResource implements CoAP's discovery service. It
+ * responds to GET requests with a list of his child resources, i.e. links.
+ */
+public class LocationResource extends CoapResource {
+	
+	/**
+	 * Instantiates a new discovery resource with the specified name.
+	 *
+	 * @param name the name
+	 * @param attributes the attributes of this resource
+	 */
+	public LocationResource(String name, SNResourceAttributes attributes) {
+		super(name);
+		
+		for(String attr: attributes.getAttributeKeySet()){
+			getAttributes().addAttribute(attr,
+					attributes.getAttributeValues(attr).get(0));
+		}
+	}
+	
+	/**
+	 * Responds with a list of his child resources, i.e. links.
+	 * 
+	 * @param exchange the exchange
+	 */
+	@Override
+	public void handleGET(CoapExchange exchange) {
+		String tree = discoverTree((Resource)this, exchange.getRequestOptions().getUriQuery());
+		exchange.respond(ResponseCode.CONTENT, tree, MediaTypeRegistry.APPLICATION_LINK_FORMAT);
+	}
+	
+	/**
+	 * Builds up the list of resources of the specified root resource. Queries
+	 * serve as filter and might prevent undesired resources from appearing on
+	 * the list.
+	 * 
+	 * @param root the root resource of the server
+	 * @param queries the queries
+	 * @return the list of resources as string
+	 */
+	public String discoverTree(Resource root, List<String> queries) {
+		StringBuilder buffer = new StringBuilder();
+		for (Resource child:root.getChildren()) {
+			LinkFormat.serializeTree(child, queries, buffer);
+		}
+		
+		// remove last comma ',' of the buffer
+		if (buffer.length()>1)
+			buffer.delete(buffer.length()-1, buffer.length());
+		
+		return buffer.toString();
+	}
+}
