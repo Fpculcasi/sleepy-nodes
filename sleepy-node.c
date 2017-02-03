@@ -59,13 +59,13 @@ AUTOSTART_PROCESSES(&sleepy_node);
 
 /* TEST RESOURCE */
 RESOURCE(res_toggle_red,
-         "title=\"Red LED\";rt=\"Control\"",
+         "title=\"Red LED\";rt=\"Control\";ct=0",
          NULL,
          NULL,
          NULL,
          NULL);
 
-
+/* GLOBAL VARIABLES DECLARATION */
 const char* well_known = ".well-known/core";
 uip_ipaddr_t server_ipaddr;
 static struct etimer et;
@@ -107,6 +107,7 @@ void receiver_callback(void *response){
 	PRINTF("---ret: respcode %d\n", state->response->code);
 }
 
+/* Parses the response from the proxy */
 void set_proxy_base_path(coap_packet_t* pkt){
 	const uint8_t* payload;
 	char* token;
@@ -115,8 +116,9 @@ void set_proxy_base_path(coap_packet_t* pkt){
 	token = strtok((char*)payload, delim1);
 	while( token != NULL ) {
 		if(token[0] == '<'){
-			//here I found the 9base path of the proxy
-			//I trim the angular parenthesis
+			/* Here I found the base path of the proxy
+			*  I trim the angular parenthesis
+			*/
 			token[strlen(token)-1] = '\0';
 			token = token+1;
 			strcpy(proxy_infos->base_path,token);
@@ -129,9 +131,24 @@ void set_proxy_base_path(coap_packet_t* pkt){
 	}
 }
 
+/* Set the location on the proxy where the delegated resource has been stored */
 void set_proxy_resource_location(coap_packet_t* pkt){
-	coap_get_header_location_path(pkt,(const char**)&(proxy_infos->res_location));
+	const char* tmp;
+	int len;
+	len = coap_get_header_location_path(pkt,&tmp);
+	memcpy(&proxy_infos->res_location[0], tmp, len);
+
+	//turn the received location into a string
+	proxy_infos->res_location[len] = '\0';
+	
+	//PRINTF("### %s", tmp);
 }
+
+/**********************************************************************************/
+/* CoAP packet construction functions:
+*  Those functions are used by SN_BLOCKING_SEND to construct the
+*  CoAP packet to send to the proxy 
+*/
 
 coap_packet_t* proxy_discovery(){
 	static coap_packet_t request[1];
@@ -149,19 +166,21 @@ coap_packet_t* proxy_registration(resource_t* delegated_resource, char* delegate
 	static char uri[MAX_URI_LEN];
 	static char payload[MAX_PAYLOAD_LEN];
 
-	sprintf(uri,"%s%s",well_known,proxy_infos->base_path);
+	//sprintf(uri,"/%s",proxy_infos->base_path);
 	sprintf(query, "ep=%s&rt=%s",state->ep_id,delegated_rt);
 	sprintf(payload, "</%s>;%s",delegated_resource->url,delegated_resource->attributes);
 
 	coap_init_message(request, COAP_TYPE_CON, COAP_POST, 0);
 	
-	coap_set_header_uri_path(request, uri);
+	coap_set_header_uri_path(request, proxy_infos->base_path);
 	coap_set_header_uri_query(request, query);
 	coap_set_payload(request, (uint8_t *)payload, strlen(payload)+1);
 
 	return request;
 }
+/*********************************************************************************/
 
+/* Set this sleepy node ep field*/
 void set_ep_id(){
 	static char buf[17];
 	sprintf(buf, "%02x%02x%02x%02x%02x%02x%02x%02x", 
