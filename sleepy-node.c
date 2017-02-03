@@ -31,10 +31,7 @@
 	#define PRINTF(...)
 	#define PRINT6ADDR(addr)
 	#define PRINTLLADDR(addr)
-#endif
-
-
-#define SERVER_NODE(ipaddr)	uip_ip6addr(ipaddr, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x1)
+#endif	
 
 #define LOCAL_PORT		COAP_DEFAULT_PORT + 1
 #define REMOTE_PORT		COAP_DEFAULT_PORT
@@ -43,14 +40,22 @@
 #define MAX_URI_LEN		64
 #define MAX_ATTR_LEN		32
 
+#define NUM_PROXIES		2
 
+#define ERROR_CODE		255
 #define TOGGLE_INTERVAL 3
 
-#define SN_BLOCKING_SEND(pkt_build_function, ipaddr, ...){ \
+#define SN_BLOCKING_SEND(pkt_build_function, proxy_index, ...){ \
 	coap_packet_t* send_pkt; \
-	send_pkt = pkt_build_function(__VA_ARGS__); \
-	PRINTF("+++sent: %s?%s\n",send_pkt->uri_path,send_pkt->uri_query); \
-	COAP_BLOCKING_REQUEST(ipaddr, UIP_HTONS(REMOTE_PORT), send_pkt, receiver_callback); \
+	if(proxy_index >= NUM_PROXIES){ \
+		PRINTF("proxy_index out of bound\n"); \
+		state->response->code = ERROR_CODE; \
+	} else { \
+		send_pkt = pkt_build_function(proxy_index, ##__VA_ARGS__); \
+		PRINTF("+++sent: %s?%s\n",send_pkt->uri_path,send_pkt->uri_query); \
+		COAP_BLOCKING_REQUEST(&(proxy_state[proxy_index].proxy_ip), \
+			UIP_HTONS(REMOTE_PORT), send_pkt, receiver_callback); \
+	} \
 }
  
 
@@ -67,12 +72,12 @@ RESOURCE(res_toggle_red,
 
 /* GLOBAL VARIABLES DECLARATION */
 const char* well_known = ".well-known/core";
-uip_ipaddr_t server_ipaddr;
 static struct etimer et;
-struct proxy_infos_t {
+struct proxy_state_t {
+	uip_ipaddr_t proxy_ip;
 	char base_path[MAX_URI_LEN];
 	char res_location[MAX_URI_LEN];
-} p, *proxy_infos = &p;
+} proxy_state[NUM_PROXIES];
 	
 struct sn_state_t {
 	coap_packet_t* response;
@@ -90,7 +95,7 @@ set_global_address(void)
 	uip_ds6_set_addr_iid(&ipaddr, &uip_lladdr);
 	uip_ds6_addr_add(&ipaddr, 0, ADDR_AUTOCONF);
 
-	/*printf("IPv6 addresses: ");
+	printf("IPv6 addresses: ");
 	for(i = 0; i < UIP_DS6_ADDR_NB; i++) {
 		state = uip_ds6_if.addr_list[i].state;
 		if(uip_ds6_if.addr_list[i].isused &&
@@ -98,7 +103,7 @@ set_global_address(void)
 			uip_debug_ipaddr_print(&uip_ds6_if.addr_list[i].ipaddr);
 			printf("\n");
 		}
-	}*/
+	}
 }
 
 /* This function is will be passed to COAP_BLOCKING_REQUEST() to handle responses. */
@@ -108,10 +113,14 @@ void receiver_callback(void *response){
 }
 
 /* Parses the response from the proxy */
-void set_proxy_base_path(coap_packet_t* pkt){
+void set_proxy_base_path(coap_packet_t* pkt, uint8_t proxy_index){
 	const uint8_t* payload;
 	char* token;
 	const char delim1[2] = ";";
+	if(proxy_index >= NUM_PROXIES){
+		PRINTF("proxy_index out of bound\n");
+		return;
+	}
 	coap_get_payload(pkt, &payload);
 	token = strtok((char*)payload, delim1);
 	while( token != NULL ) {
@@ -121,10 +130,10 @@ void set_proxy_base_path(coap_packet_t* pkt){
 			*/
 			token[strlen(token)-1] = '\0';
 			token = token+1;
-			strcpy(proxy_infos->base_path,token);
+			strcpy(proxy_state[proxy_index].base_path,token);
 		} else {
 			//TODO: get the other parameters
-			//proxy_infos = NULL;
+			//proxy_state = NULL;
 		}
 
 		token = strtok(NULL, delim1);
@@ -132,14 +141,20 @@ void set_proxy_base_path(coap_packet_t* pkt){
 }
 
 /* Set the location on the proxy where the delegated resource has been stored */
-void set_proxy_resource_location(coap_packet_t* pkt){
+void set_proxy_resource_location(coap_packet_t* pkt, uint8_t proxy_index){
 	const char* tmp;
 	int len;
+
+	if(proxy_index >= NUM_PROXIES){
+		PRINTF("proxy_index out of bound\n");
+		return;
+	}
+	
 	len = coap_get_header_location_path(pkt,&tmp);
-	memcpy(&proxy_infos->res_location[0], tmp, len);
+	memcpy(&(proxy_state[proxy_index].res_location[0]), tmp, len);
 
 	//turn the received location into a string
-	proxy_infos->res_location[len] = '\0';
+	proxy_state[proxy_index].res_location[len] = '\0';
 	
 	//PRINTF("### %s", tmp);
 }
@@ -150,7 +165,7 @@ void set_proxy_resource_location(coap_packet_t* pkt){
 *  CoAP packet to send to the proxy 
 */
 
-coap_packet_t* proxy_discovery(){
+coap_packet_t* proxy_discovery(uint8_t proxy_index){
 	static coap_packet_t request[1];
 
 	coap_init_message(request, COAP_TYPE_CON, COAP_GET, 0);
@@ -160,19 +175,19 @@ coap_packet_t* proxy_discovery(){
 	return request;
 }
 
-coap_packet_t* proxy_registration(resource_t* delegated_resource, char* delegated_rt){
+coap_packet_t* proxy_registration(uint8_t proxy_index, resource_t* delegated_resource, char* delegated_rt){
 	static coap_packet_t request[1];
 	static char query[MAX_QUERY_LEN];
-	static char uri[MAX_URI_LEN];
+	//static char uri[MAX_URI_LEN];
 	static char payload[MAX_PAYLOAD_LEN];
 
-	//sprintf(uri,"/%s",proxy_infos->base_path);
+	//sprintf(uri,"/%s",proxy_state->base_path);
 	sprintf(query, "ep=%s&rt=%s",state->ep_id,delegated_rt);
 	sprintf(payload, "</%s>;%s",delegated_resource->url,delegated_resource->attributes);
 
 	coap_init_message(request, COAP_TYPE_CON, COAP_POST, 0);
 	
-	coap_set_header_uri_path(request, proxy_infos->base_path);
+	coap_set_header_uri_path(request, proxy_state[proxy_index].base_path);
 	coap_set_header_uri_query(request, query);
 	coap_set_payload(request, (uint8_t *)payload, strlen(payload)+1);
 
@@ -190,13 +205,17 @@ void set_ep_id(){
 		((uint8_t *)&uip_lladdr)[6], ((uint8_t *)&uip_lladdr)[7]);
 	state->ep_id = buf;
 }
+int p=0;
 
 PROCESS_THREAD(sleepy_node, ev, data)
 {
 	PROCESS_BEGIN();	
-	SERVER_NODE(&server_ipaddr);
 	set_global_address();
 	coap_init_engine();
+
+	/*initialize proxies ip addresses*/
+	uip_ip6addr(&proxy_state[0].proxy_ip, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x1);
+	uip_ip6addr(&proxy_state[1].proxy_ip, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x1);
 
 	/*initialize test resource*/
 	rest_activate_resource(&res_toggle_red, "red_led");
@@ -204,25 +223,29 @@ PROCESS_THREAD(sleepy_node, ev, data)
 	set_ep_id();
 	PRINTF("ep:%s\n",state->ep_id);
 
-	etimer_set(&et, TOGGLE_INTERVAL * CLOCK_SECOND);
+	//etimer_set(&et, TOGGLE_INTERVAL * CLOCK_SECOND);
 
-	/*Send discovery*/
-	SN_BLOCKING_SEND(proxy_discovery, &server_ipaddr);
-	if(state->response->code != CONTENT_2_05 /*OK*/) {
-		PRINTF("Discov. error\n");
-		PROCESS_EXIT();
-	}
-	set_proxy_base_path(state->response);
-	PRINTF("proxy disc bp: %s\n",proxy_infos->base_path);
+	/*for testing purposes, I register the same resource on all the proxies*/
+	for(p=0;p<NUM_PROXIES;p++){
+		/*Send discovery*/
+		SN_BLOCKING_SEND(proxy_discovery, p);
+		if(state->response->code != CONTENT_2_05 /*OK*/) {
+			PRINTF("Discov. error\n");
+			PROCESS_EXIT();
+		}
+		set_proxy_base_path(state->response, p);
+		printf("proxy disc bp: %s\n",proxy_state[p].base_path);
 
-	/*Send registration*/
-	SN_BLOCKING_SEND(proxy_registration, &server_ipaddr, &res_toggle_red, "sensors");
-	if(state->response->code != CREATED_2_01 /*CREATED*/) {
-		PRINTF("Registr. error\n");
-		PROCESS_EXIT();
+		/*Send registration*/
+		SN_BLOCKING_SEND(proxy_registration, p, &res_toggle_red, "sensors");
+		if(state->response->code != CREATED_2_01 /*CREATED*/) {
+			PRINTF("Registr. error\n");
+			PROCESS_EXIT();
+		}
+		set_proxy_resource_location(state->response, p);
+		printf("proxy reg location: %s\n",proxy_state[p].res_location);
 	}
-	set_proxy_resource_location(state->response);
-	PRINTF("proxy reg location: %s\n",proxy_infos->res_location);
+
 
 	/*while(1) {
 
