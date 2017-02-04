@@ -1,2 +1,9 @@
 /.metadata/
 /.recommenders/
+/obj_sky/
+/obj_z1/
+*.map
+*.sky
+*.z1
+*.a
+*~
