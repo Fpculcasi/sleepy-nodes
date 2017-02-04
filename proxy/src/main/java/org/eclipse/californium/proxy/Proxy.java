@@ -55,7 +55,7 @@ public class Proxy extends CoapServer {
 	 * CurrentHashMap in order to have stronger guarantees in a
 	 * multi-threaded environment (e.g. for discovery to work properly).
 	 */
-	private ConcurrentHashMap<String, LocationResource> EPs;
+	private ConcurrentHashMap<String, ContainerResource> EPs;
 	
 	// Counter: accessed atomically to obtain a new identifier 
 	private int counter=0;
@@ -63,7 +63,7 @@ public class Proxy extends CoapServer {
 	public Proxy() {
 		super();
 		
-		EPs = new ConcurrentHashMap<String, LocationResource>();
+		EPs = new ConcurrentHashMap<String, ContainerResource>();
 		
 		/* Each proxy use a sp (sleepy proxy) resource, 
 		 * representing the base path starting from which
@@ -71,6 +71,8 @@ public class Proxy extends CoapServer {
 		 */
 		SPResource sp = new SPResource(this);
 		add(sp);
+		
+		//setMessageDeliverer(new ProxyMessageDeliverer(sp));
 	}
 	
 	public static void main(String[] args) {
@@ -91,7 +93,7 @@ public class Proxy extends CoapServer {
 	
 	//TODO: metterei il commento piu' "normale", una volta che siamo d'accorod.
 	// cleaner to expose the map through a method rather than declaring it as public
-	public Map<String, LocationResource> getEPs(){
+	public Map<String, ContainerResource> getEPs(){
 		return EPs;
 	}
 	

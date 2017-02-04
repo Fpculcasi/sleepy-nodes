@@ -28,6 +28,14 @@ public class SNResourceAttributes extends ResourceAttributes {
 		super();
 	}
 	
+	// TODO: la funzione che aggiunge gli attributi
+	// la metterei qui, ma magari come metodo statico,
+	// perche' ribaltiamo tutto se mettiamo
+	// attributo.add(Risorsa), cioe' invertiamo le cose
+	// come sono in californium. O forse va bene il
+	// locationResource (cosi' manteniamo lo schema di calfornium),
+	// non lo so...
+	
 
 	/**
 	 * Gets the end point.

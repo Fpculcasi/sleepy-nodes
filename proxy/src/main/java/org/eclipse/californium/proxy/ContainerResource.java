@@ -1,5 +1,5 @@
 /******************************************************************************
- * @title: Location Resource
+ * @title: Container Resource
  * 	The resource storing the delegated resources of a given endpoint
  * 
  * @authors:
@@ -25,16 +25,24 @@ import org.eclipse.californium.core.server.resources.Resource;
  * The LocationResource implements CoAP's discovery service. It
  * responds to GET requests with a list of his child resources, i.e. links.
  */
-public class LocationResource extends CoapResource {
+public class ContainerResource extends CoapResource {
 	
+	private CoapTreeBuilder coapTreeBuilder;
+	
+	public CoapTreeBuilder getCoapTreeBuilder() {
+		return coapTreeBuilder;
+	}
+
 	/**
 	 * Instantiates a new discovery resource with the specified name.
 	 *
 	 * @param name the name
 	 * @param attributes the attributes of this resource
 	 */
-	public LocationResource(String name, SNResourceAttributes attributes) {
+	public ContainerResource(String name, SNResourceAttributes attributes) {
 		super(name);
+		
+		this.coapTreeBuilder = new CoapTreeBuilder(this);
 		
 		for(String attr: attributes.getAttributeKeySet()){
 			getAttributes().addAttribute(attr,

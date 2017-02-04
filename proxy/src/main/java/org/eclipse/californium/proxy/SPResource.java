@@ -40,6 +40,11 @@ import static org.eclipse.californium.core.coap.MediaTypeRegistry.APPLICATION_LI
  * rt=core.sp.
  * The SP resource doesn't need to be observable, since its state never
  * changes.
+ * 
+ * TODO: the method handlePOST should include some method,
+ * instead of having all that bloat of code
+ * TODO: container resources (location resources) like sp/0 
+ * should have content type=40, link-format
  */
 public class SPResource extends CoapResource {
 
@@ -82,6 +87,7 @@ public class SPResource extends CoapResource {
         		APPLICATION_LINK_FORMAT);
     }
 
+    
 	/**
 	 * The handlePOST method handles POST request performed on the SP resource.
 	 * It returns a '2.01 Created Location: /sp/-' response code, ...
@@ -113,74 +119,76 @@ public class SPResource extends CoapResource {
     		return;
     	}
     	
+    	/* TODO: Prima di andare avanti, sarebbe buono controllare
+    	 * anche che la richiesta sia ben formata: ad esempio
+    	 * che al primo posto ci sia il path, che dentro il path
+    	 * non ci siano doppi '/' e non ci siano spazi etc.
+    	 */
+    	
     	/* The endpoint was specified. We try to understand if this
     	 * endpoint already registered with this proxy. If that is the case,
     	 * in the following map there will be a corresponding DelegatedResource
     	 */
-        Map<String, LocationResource> EPs = proxy.getEPs();
-        LocationResource locationResource = EPs.get(epValue);
+        Map<String, ContainerResource> EPs = proxy.getEPs();
+        ContainerResource containerResource = EPs.get(epValue);
         
-        if(locationResource == null){ // the node has never delegated before
+        if(containerResource == null){ // the node has never delegated before
         	// TODO: ma sara' safe fare una cosa del genere? non 
         	// sarebbe meglio mettere un bel .toString?
         	// Anche newName non mi piace molto, sarebbe meglio, chesso',
         	// sleepyNodeLocalId o sleepyNodeContainerId
         	String newName = "" + proxy.newEPId();
-        	locationResource = new LocationResource(newName, queryAttributes);
+        	containerResource = new ContainerResource(newName, queryAttributes);
         	
-        	EPs.put(epValue, locationResource);
-        	// Add the newly created resource as child of *this* (SP) resource
-        	add(locationResource);
+        	// Add the new <endPoint, locationRerouce> pair to the map
+        	EPs.put(epValue, containerResource);
+        	// Add the newly created resource as child of his container resource
+        	add(containerResource);
 
             System.out.println("[Added] " + newName + " (visible: "
-              + locationResource.isVisible() + ") " + locationResource.getName()
-              + "\n-" + locationResource.getPath()
-              + "\n-" + locationResource.getURI()
+              + containerResource.isVisible() + ") " + containerResource.getName()
+              + "\n-" + containerResource.getPath()
+              + "\n-" + containerResource.getURI()
               + "\n" + queryAttributes );
         }
         
-        /* Generate location for the new resources */
+        // Creates the delegated resources, but do not initialize them
         String payload = exchange.getRequestText().trim();
+        // Fills a string array with the delegated resources
         String resources[] = payload.split(",");
         for(String r: resources){
         	String fields[] = r.split(";");
         	SNResourceAttributes attributes = new SNResourceAttributes();
         	for(String attribute: fields){
+        		// TODO: possibile che non ci sia un modo piu' semplice
+        		// per dire "salta il primo elemento"?
+        		// ah ecco, ho visto che si puo' sostituire con
+        		// if (attribute = fields[0]) continue.
+        		// penso sia anche piu' veloce da controllare
+        		// tanto anche nel seguito stiamo assumendo che 
+        		// il path stia nella prima posizione dell'array
         		if(!attribute.matches("^<.*>$")){ // exclude path name
         			String attr[] = attribute.split("=");
         			attributes.addAttribute(attr[0], attr[1].replace("\"",""));
         		}
         	}
-        	String newName = fields[0].replace("<","").replace(">","");
+        	String cleanedPath = fields[0].replace("<","").replace(">","");
         	
-        	/* remove the first '/', it will be add by CoapResource setParent(),
-        	 * see [1] */
-        	newName = newName.substring(1);
+        	DelegatedResource newResource =	new DelegatedResource(
+        			null, true, attributes);
         	
-        	DelegatedResource newResource =
-        			new DelegatedResource(newName, attributes, true/*false*/);
-        	
-        	// I add the newly created resources to the resource container
-        	locationResource.add(newResource);
+        	// TODO: visibility has to be set to false when the PUT is ready
 
-            System.out.println("[Added] " + newName + " (visible: "
-              + newResource.isVisible() + ") " + newResource.getName()
-              + "\n-" + newResource.getPath()
-              + "\n-" + newResource.getURI()
-              + "\n" + attributes );
+        	containerResource.getCoapTreeBuilder().add(
+        			newResource, 
+        			cleanedPath, 
+        			VisibilityPolicy.ALL_INVISIBLE);
+        	
         }
-        
-        /* I add the "Location" option to the answer, 
-         * set with the URI of the resource container
-         */
-        exchange.setLocationPath(locationResource.getURI());
+        // I add the "Location" option to the answer, 
+        // set with the URI of the resource container
+        exchange.setLocationPath(containerResource.getURI());
 		exchange.respond(CoAP.ResponseCode.CREATED);
         
     }
-    /*
-    public static void main(String[] args){
-    	SPResource sp = new SPResource();
-    }
-	*/
-    
 }
