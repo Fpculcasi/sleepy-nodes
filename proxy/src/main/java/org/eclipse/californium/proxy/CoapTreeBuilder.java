@@ -1,6 +1,8 @@
 package org.eclipse.californium.proxy;
 
 import org.eclipse.californium.core.CoapResource;
+import org.eclipse.californium.core.coap.CoAP;
+import org.eclipse.californium.core.server.resources.CoapExchange;
 import org.eclipse.californium.core.server.resources.Resource;
 
 public class CoapTreeBuilder {
@@ -170,7 +172,12 @@ public class CoapTreeBuilder {
 				newResource = new CoapResource(resourceName, true);					
 				break;
 			case ALL_INVISIBLE:					
-				newResource = new CoapResource(resourceName, false);
+				newResource = new CoapResource(resourceName, false){
+					@Override
+					public void handleGET(CoapExchange exchange){
+						exchange.respond(CoAP.ResponseCode.NOT_FOUND);
+					}
+				};
 				break;
 		}
 		father.add(newResource);

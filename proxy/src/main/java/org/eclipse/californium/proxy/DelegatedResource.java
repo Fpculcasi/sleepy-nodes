@@ -19,24 +19,25 @@ import org.eclipse.californium.core.coap.CoAP;
 import org.eclipse.californium.core.coap.CoAP.Code;
 import org.eclipse.californium.core.network.Exchange;
 import org.eclipse.californium.core.server.resources.CoapExchange;
-import org.eclipse.californium.core.server.resources.Resource;
 
 public class DelegatedResource extends CoapResource {
+	
+	private String value;
+	
 	/**
 	 * @param name the name of the resource to be created.
 	 * @param isVisible indicate whether the newly created resource will be
 	 * visible or not from clients.
+	 * @param attributes list of attributes of the resource
 	 */
 	public DelegatedResource(String name, boolean isVisible, 
 			SNResourceAttributes attributes){
 		super(name, isVisible);
 		
-		/*
 		for(String attr: attributes.getAttributeKeySet()){
 			getAttributes().addAttribute(attr,
 					attributes.getAttributeValues(attr).get(0));
 		}
-		*/
 	}
 	
 	/** 
@@ -69,32 +70,59 @@ public class DelegatedResource extends CoapResource {
 
 	
 	/**
-	 * handleRequest method has been overridden in order to handle
-	 * the presence of phantom resources. Those resources are used
-	 * internally in the resource tree with the aims of make
-	 * the leaves of the tree reachable, but since they were
-	 * not explicitly created, the are not reachable from the outside
+	 * handleRequest() method has been overridden in order to handle the
+	 * presence of phantom resources. Those resources are used internally
+	 * in the resource tree with the aims of make the leaves of the tree
+	 * reachable, but since they were not explicitly created, the are not
+	 * reachable from the outside.
 	 * @param exchange the exchange with the request
 	 */
 	@Override
 	public void handleRequest(final Exchange exchange) {
 		CoapExchange coapExchange = new CoapExchange(exchange, this);
-		if (isVisible() == false){
-			coapExchange.respond(CoAP.ResponseCode.NOT_FOUND);
-		} else {
-			Code code = coapExchange.getRequestCode();
-			switch (code) {
-				case GET:	handleGET(coapExchange); break;
-				case POST:	handlePOST(coapExchange); break;
-				case PUT:	handlePUT(coapExchange); break;
-				case DELETE: handleDELETE(coapExchange); break;
-			}
+		Code code = coapExchange.getRequestCode();
+		switch (code) {
+			case GET:
+				if (isVisible() == false){
+					coapExchange.respond(CoAP.ResponseCode.NOT_FOUND);
+				} else {
+					handleGET(coapExchange);
+				}
+				break;
+			case POST:	handlePOST(coapExchange); break;
+			case PUT:	handlePUT(coapExchange); break;
+			case DELETE: handleDELETE(coapExchange); break;
 		}
 	}
 	
-	
+	/**
+	 * handleGET() returns the state of the resource stored in 'value' variable
+	 */
 	@Override
 	public void handleGET(CoapExchange exchange){
-		exchange.respond(CoAP.ResponseCode.CONTENT, "Hello from " + this.getName());
+		exchange.respond(CoAP.ResponseCode.CONTENT, value);
 	}
+	
+	/**
+	 * handlePUT() modifies the the state of the delegated resource.
+	 * The first PUT request also initializes the resource by setting it
+	 * visible and observable.
+	 */
+    @Override
+    public void handlePUT(CoapExchange exchange) {
+    	String payload = exchange.getRequestText();
+    	
+    	if(value == null){ // not initialized yet
+    		setObservable(true);
+    		setVisible(true);
+    		value = payload;
+    		exchange.respond(CoAP.ResponseCode.CREATED);
+    	} else {
+    		value = payload;
+    		exchange.respond(CoAP.ResponseCode.CHANGED);
+    	}
+    	
+    	// TODO: handle life-time expiration
+    	
+    }
 }

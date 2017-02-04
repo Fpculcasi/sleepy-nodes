@@ -80,8 +80,6 @@ public class SPResource extends CoapResource {
         			getAttributes().getAttributeValues(temp).get(0)+ "\"";
         }
         
-        /*FIXME: why isn't Copper rendering the response? 
-		 *		(even if the same is correctly rendered in other instances)*/
         exchange.respond(CoAP.ResponseCode.CONTENT, 
         		"<" + getPath()+getName() + ">" +attributes, 
         		APPLICATION_LINK_FORMAT);
@@ -90,19 +88,14 @@ public class SPResource extends CoapResource {
     
 	/**
 	 * The handlePOST method handles POST request performed on the SP resource.
-	 * It returns a '2.01 Created Location: /sp/-' response code, ...
+	 * It returns a '2.01 Created Location: /sp/x' response code, ...
 	 */
-    /* TODO: per quanto riguarda qui sopra: il reponse code e' soltanto 2.01 Created;
-     * inoltre, per chiarezza, al posto di /sp/- metterei /sp/x 
-     * 
-     */
     @Override
     public void handlePOST(CoapExchange exchange) {
     	System.out.println("***SleepyProxyResource.handlePOST called. Handled"
     		+ "	by thread" + java.lang.Thread.currentThread().toString());
 
     	// We retrieve queries contained in the URI
-    	// TODO: ho cambiato uriQuerys con uriQueries
     	List<String> uriQueries = exchange.getRequestOptions().getUriQuery();
     	SNResourceAttributes queryAttributes = new SNResourceAttributes();
     	
@@ -133,20 +126,20 @@ public class SPResource extends CoapResource {
         ContainerResource containerResource = EPs.get(epValue);
         
         if(containerResource == null){ // the node has never delegated before
-        	// TODO: ma sara' safe fare una cosa del genere? non 
-        	// sarebbe meglio mettere un bel .toString?
-        	// Anche newName non mi piace molto, sarebbe meglio, chesso',
-        	// sleepyNodeLocalId o sleepyNodeContainerId
-        	String newName = "" + proxy.newEPId();
-        	containerResource = new ContainerResource(newName, queryAttributes);
+        	String newContainerId = "" + proxy.newEPId();
+        	// forse non dobbiamo impostare l'attributo
+        	queryAttributes.addContentType(APPLICATION_LINK_FORMAT);
+        	containerResource = 
+        			new ContainerResource(newContainerId, queryAttributes);
         	
         	// Add the new <endPoint, locationRerouce> pair to the map
         	EPs.put(epValue, containerResource);
         	// Add the newly created resource as child of his container resource
         	add(containerResource);
 
-            System.out.println("[Added] " + newName + " (visible: "
-              + containerResource.isVisible() + ") " + containerResource.getName()
+            System.out.println("[Added] " + newContainerId + " (visible: "
+              + containerResource.isVisible() + ") "
+              + containerResource.getName()
               + "\n-" + containerResource.getPath()
               + "\n-" + containerResource.getURI()
               + "\n" + queryAttributes );
@@ -158,16 +151,11 @@ public class SPResource extends CoapResource {
         String resources[] = payload.split(",");
         for(String r: resources){
         	String fields[] = r.split(";");
+        	
+        	
         	SNResourceAttributes attributes = new SNResourceAttributes();
-        	for(String attribute: fields){
-        		// TODO: possibile che non ci sia un modo piu' semplice
-        		// per dire "salta il primo elemento"?
-        		// ah ecco, ho visto che si puo' sostituire con
-        		// if (attribute = fields[0]) continue.
-        		// penso sia anche piu' veloce da controllare
-        		// tanto anche nel seguito stiamo assumendo che 
-        		// il path stia nella prima posizione dell'array
-        		if(!attribute.matches("^<.*>$")){ // exclude path name
+        	for(String attribute: fields) {
+        		if(attribute.compareTo(fields[0]) != 0) { // exclude path name
         			String attr[] = attribute.split("=");
         			attributes.addAttribute(attr[0], attr[1].replace("\"",""));
         		}
@@ -175,9 +163,7 @@ public class SPResource extends CoapResource {
         	String cleanedPath = fields[0].replace("<","").replace(">","");
         	
         	DelegatedResource newResource =	new DelegatedResource(
-        			null, true, attributes);
-        	
-        	// TODO: visibility has to be set to false when the PUT is ready
+        			null, false, attributes);
 
         	containerResource.getCoapTreeBuilder().add(
         			newResource, 
@@ -191,4 +177,5 @@ public class SPResource extends CoapResource {
 		exchange.respond(CoAP.ResponseCode.CREATED);
         
     }
+    
 }
