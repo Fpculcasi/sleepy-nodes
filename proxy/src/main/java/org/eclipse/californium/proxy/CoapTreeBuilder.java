@@ -9,8 +9,14 @@ public class CoapTreeBuilder {
 	
 	protected CoapResource root;
 	
-	public CoapTreeBuilder(CoapResource root){
+	// defaultVisibility is the visibility applied to a deleted/de-registered
+	// (by life-time expiration) resource
+	private VisibilityPolicy defaultVisibility;
+	
+	
+	public CoapTreeBuilder(CoapResource root, VisibilityPolicy visibility){
 		this.root = root;
+		this.defaultVisibility = visibility;
 	}
 	
 	protected class InfoPath{
@@ -98,7 +104,7 @@ public class CoapTreeBuilder {
 		Resource currentFather = root;
 		// Class used to memorize remaining path and name of
 		// the resource that is currently being traversed or created. 
-		// It also consider if the alghoritm is considering the last part
+		// It also consider if the algorithm is considering the last part
 		// of the path
 		InfoPath iPath = new InfoPath(path);
 		while(true){
@@ -144,7 +150,7 @@ public class CoapTreeBuilder {
 		}
 	}
 	
-	protected static void handleExistingResource(CoapResource child,
+	protected void handleExistingResource(CoapResource child,
 			VisibilityPolicy vPolicy) {
 			System.out.println("traversing intermediate resource" 
 					+ " " + child.getName() + ", visibility " + child.isVisible() 
@@ -162,17 +168,17 @@ public class CoapTreeBuilder {
 			}		
 	}
 	
-	protected static Resource handleResourceCreation(
+	protected Resource handleResourceCreation(
 			String resourceName, Resource father, VisibilityPolicy vPolicy) {
 		// newResource is used to store the newly created resource
 		Resource newResource = null;
 		// Creation of an intermediate resource
 		switch (vPolicy){
 			case ALL_VISIBLE:
-				newResource = new CoapResource(resourceName, true);					
+				newResource = new ActiveCoapResource(resourceName, false, true);
 				break;
 			case ALL_INVISIBLE:					
-				newResource = new CoapResource(resourceName, false){
+				newResource = new ActiveCoapResource(resourceName, false, false){
 					@Override
 					public void handleGET(CoapExchange exchange){
 						exchange.respond(CoAP.ResponseCode.NOT_FOUND);
@@ -182,8 +188,8 @@ public class CoapTreeBuilder {
 		}
 		father.add(newResource);
 		System.out.println("Created intermediate resource" 
-				+ " " + resourceName + ", visibility " + newResource.isVisible() 
+				+ " " + resourceName + ", visibility " + newResource.isVisible()
 				+ " and son of " + father.getName());	
 		return newResource;
-	}		
+	}
 }

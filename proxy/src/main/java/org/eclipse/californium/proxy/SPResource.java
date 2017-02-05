@@ -129,8 +129,10 @@ public class SPResource extends CoapResource {
         	String newContainerId = "" + proxy.newEPId();
         	// forse non dobbiamo impostare l'attributo
         	queryAttributes.addContentType(APPLICATION_LINK_FORMAT);
-        	containerResource = 
-        			new ContainerResource(newContainerId, queryAttributes);
+        	containerResource = new ContainerResource(
+        			newContainerId,
+        			queryAttributes,
+        			exchange.getSourceAddress());
         	
         	// Add the new <endPoint, locationRerouce> pair to the map
         	EPs.put(epValue, containerResource);
@@ -163,7 +165,7 @@ public class SPResource extends CoapResource {
         	String cleanedPath = fields[0].replace("<","").replace(">","");
         	
         	DelegatedResource newResource =	new DelegatedResource(
-        			null, false, attributes);
+        			null, false, attributes, containerResource);
 
         	containerResource.getCoapTreeBuilder().add(
         			newResource, 

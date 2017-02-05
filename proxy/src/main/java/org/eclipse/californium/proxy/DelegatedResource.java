@@ -14,15 +14,17 @@
 
 package org.eclipse.californium.proxy;
 
-import org.eclipse.californium.core.CoapResource;
 import org.eclipse.californium.core.coap.CoAP;
-import org.eclipse.californium.core.coap.CoAP.Code;
-import org.eclipse.californium.core.network.Exchange;
+import org.eclipse.californium.core.coap.CoAP.ResponseCode;
 import org.eclipse.californium.core.server.resources.CoapExchange;
+import org.eclipse.californium.core.server.resources.Resource;
 
-public class DelegatedResource extends CoapResource {
+import static org.eclipse.californium.core.coap.MediaTypeRegistry.APPLICATION_LINK_FORMAT;
+
+public class DelegatedResource extends ActiveCoapResource {
 	
 	private String value;
+	private ContainerResource container;
 	
 	/**
 	 * @param name the name of the resource to be created.
@@ -31,22 +33,15 @@ public class DelegatedResource extends CoapResource {
 	 * @param attributes list of attributes of the resource
 	 */
 	public DelegatedResource(String name, boolean isVisible, 
-			SNResourceAttributes attributes){
-		super(name, isVisible);
+			SNResourceAttributes attributes, ContainerResource container) {
+		super(name, true, isVisible);
+		
+		this.container = container;
 		
 		for(String attr: attributes.getAttributeKeySet()){
 			getAttributes().addAttribute(attr,
 					attributes.getAttributeValues(attr).get(0));
 		}
-	}
-	
-	/** 
-	 * Simpler constructor, resources are created as visible.
-	 * @param name the name of the resource to be created.
-	 * TODO: penso che questo costruttore non abbia piu' motivo di esistere
-	 */
-	public DelegatedResource(String name){
-		this(name, true, null);
 	}
 
 	/**
@@ -68,39 +63,17 @@ public class DelegatedResource extends CoapResource {
 	}
 	*/
 
-	
-	/**
-	 * handleRequest() method has been overridden in order to handle the
-	 * presence of phantom resources. Those resources are used internally
-	 * in the resource tree with the aims of make the leaves of the tree
-	 * reachable, but since they were not explicitly created, the are not
-	 * reachable from the outside.
-	 * @param exchange the exchange with the request
-	 */
-	@Override
-	public void handleRequest(final Exchange exchange) {
-		CoapExchange coapExchange = new CoapExchange(exchange, this);
-		Code code = coapExchange.getRequestCode();
-		switch (code) {
-			case GET:
-				if (isVisible() == false){
-					coapExchange.respond(CoAP.ResponseCode.NOT_FOUND);
-				} else {
-					handleGET(coapExchange);
-				}
-				break;
-			case POST:	handlePOST(coapExchange); break;
-			case PUT:	handlePUT(coapExchange); break;
-			case DELETE: handleDELETE(coapExchange); break;
-		}
-	}
-	
 	/**
 	 * handleGET() returns the state of the resource stored in 'value' variable
+	 * after checking the resource has been initialized
 	 */
 	@Override
 	public void handleGET(CoapExchange exchange){
-		exchange.respond(CoAP.ResponseCode.CONTENT, value);
+		if(!isVisible()) { // if not initialized
+			exchange.respond(CoAP.ResponseCode.NOT_FOUND);
+		} else {
+			exchange.respond(CoAP.ResponseCode.CONTENT, value);
+		}
 	}
 	
 	/**
@@ -111,18 +84,60 @@ public class DelegatedResource extends CoapResource {
     @Override
     public void handlePUT(CoapExchange exchange) {
     	String payload = exchange.getRequestText();
-    	
-    	if(value == null){ // not initialized yet
-    		setObservable(true);
-    		setVisible(true);
-    		value = payload;
-    		exchange.respond(CoAP.ResponseCode.CREATED);
-    	} else {
-    		value = payload;
-    		exchange.respond(CoAP.ResponseCode.CHANGED);
+    	String response = null;
+		ResponseCode code;
+
+		value = payload; // update resource value
+		
+    	if(container.getSPIpAddress().equals(exchange.getSourceAddress())) {
+    		// Update from the owner sleepy node
+    		
+        	response = checkChanges(container); // check all the resources
+        	response.substring(0, response.length()-1); //remove last comma
+        	
+        	if(!isVisible()){ // not initialized yet
+        		setObservable(true);
+        		setVisible(true);
+        		code = CoAP.ResponseCode.CREATED;
+        	} else {
+        		code = CoAP.ResponseCode.CHANGED;
+        	}
+    	} else { // Any other EP
+    		if(!isVisible()){
+    			code = CoAP.ResponseCode.NOT_FOUND;
+    		}else{
+	    		setDirty(true); // set the resource ad dirty
+	    		code = CoAP.ResponseCode.CHANGED;
+    		}
     	}
+    	
+    	// build a response
+    	if(response == null){
+    		exchange.respond(code);
+    	} else {
+    		exchange.respond(code, response, APPLICATION_LINK_FORMAT);
+    	}
+    	
     	
     	// TODO: handle life-time expiration
     	
     }
+    
+    public String checkChanges(Resource root) {
+		StringBuilder buffer = new StringBuilder();
+		for (Resource child: root.getChildren()) {
+			ActiveCoapResource c = (ActiveCoapResource) child;
+			if(c.isVisible() && c.isDirty()) {
+				c.setDirty(false);
+				buffer.append("<")
+						.append(child.getPath())
+						.append(child.getName())
+						.append(">")
+						.append(",");
+			}
+			buffer.append(checkChanges(child));
+		}
+		
+		return buffer.toString();
+	}
 }
