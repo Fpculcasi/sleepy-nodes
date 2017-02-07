@@ -1,6 +1,7 @@
 all: sleepy-node
 
 CONTIKI=/home/user/contiki
+PROJECT_SOURCEFILES = proxy-resources.c
 
 # linker optimizations
 SMALL=1

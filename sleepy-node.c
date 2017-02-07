@@ -22,6 +22,8 @@
 #include "er-coap-engine.h"
 #include "rest-engine.h"
 
+#include "proxy-resources.h"
+
 #define DEBUG 1
 #if DEBUG
 	#define PRINTF(...) printf(__VA_ARGS__)
@@ -65,8 +67,7 @@
 	} else { \
 		uip_ip6addr(&proxy_state[proxy_index].proxy_ip, a0, a1, a2, a3, a4, a5, a6, a7); \
 	} \
-}
-	
+}	
 
 PROCESS(sleepy_node, "Sleepy Node");
 AUTOSTART_PROCESSES(&sleepy_node);
@@ -78,10 +79,12 @@ RESOURCE(res_toggle_red,
          NULL,
          NULL,
          NULL);
+char res_toggle_red_value[MAX_PAYLOAD_LEN] = "default";
 
 /* GLOBAL VARIABLES DECLARATION */
 const char* well_known = ".well-known/core";
 static struct etimer et;
+
 struct proxy_state_t {
 	uip_ipaddr_t proxy_ip;
 	char base_path[MAX_URI_LEN];
@@ -92,7 +95,7 @@ struct sn_state_t {
 	coap_packet_t* response;
 	char* ep_id;
 
-	/*response variables*/
+	/*request variables*/
 	char query[MAX_QUERY_LEN];
 	char uri[MAX_URI_LEN];
 	char payload[MAX_PAYLOAD_LEN];
@@ -211,6 +214,20 @@ void set_proxy_resource_location(coap_packet_t* pkt, uint8_t proxy_index){
 	//PRINTF("### %s", tmp);
 }
 
+/*Set the value of a resource after having received it within a coap_packet*/
+void set_proxy_resource_value(coap_packet_t* pkt, char* remote_resource_path, uint8_t proxy_index){
+	const uint8_t* payload;
+	int len = coap_get_payload(pkt, &payload);
+	//trim out the proxy container prefix in the uri.
+	char* local_resource_path = remote_resource_path + strlen(proxy_state[0].res_location);
+	int ret = update_proxy_resource_by_path(local_resource_path, (char*)payload, len);	//mismatch among local and global uris
+	PRINTF("GET returned for resource %s (local is %s)\n",state->uri,local_resource_path);
+	if(ret<0){
+		PRINTF("Something bad in updating resource after GET request\n");
+	}
+}
+	
+	
 /**********************************************************************************/
 /* CoAP packet construction functions:
 *  Those functions are used by SN_BLOCKING_SEND to construct the
@@ -261,6 +278,19 @@ coap_packet_t* proxy_update_resource_value(uint8_t proxy_index, resource_t* dele
 
 	return request;
 }
+
+coap_packet_t* proxy_get(uint8_t proxy_index, char* proxy_resource_path){
+	static coap_packet_t request[1];
+
+	strcpy(state->uri,proxy_resource_path);
+
+	coap_init_message(request, COAP_TYPE_CON, COAP_GET, 0);
+
+	//sprintf(state->uri, "%s/%s", proxy_state[proxy_index].res_location, delegated_resource->url);
+	coap_set_header_uri_path(request, state->uri);
+	
+	return request;
+}
 	
 /*********************************************************************************/
 
@@ -286,9 +316,12 @@ PROCESS_THREAD(sleepy_node, ev, data)
 	set_global_address();
 	coap_init_engine();
 
-	/*initialize proxies ip addresses*/
+	/*initialize proxies ip addresses and resources*/
 	ADD_PROXY(0, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x1);
 	ADD_PROXY(1, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x1);
+	clear_proxy_resource_memory();
+	initialize_proxy_resource(&res_toggle_red, res_toggle_red_value, strlen(res_toggle_red_value)+1);
+	
 
 	/*initialize test resource*/
 	rest_activate_resource(&res_toggle_red, "red_led");
@@ -330,8 +363,22 @@ PROCESS_THREAD(sleepy_node, ev, data)
 		//i am supposing the payload is a c-string
 		lf = parse_link_format((char*)payload);
 		for(i=0; i<lf->res_num; i++){
-			//SN_BLOCKING_SEND(/*mando GET su lf->resource[i].resource_path*/);
+			//send get requests for each resource in the payload 
+			SN_BLOCKING_SEND(proxy_get, 0, lf->resource[i].resource_path);
+			set_proxy_resource_value(state->response, lf->resource[i].resource_path, 0);
 		}
+	} else if (state->response->code == NOT_FOUND_4_04){
+		//i must repeat the registration of this resource, since it expired
+		PRINTF("resource %s expired; resending registration\n");
+
+		/*Send registration*/
+		SN_BLOCKING_SEND(proxy_registration, p, &res_toggle_red, "sensors");
+		if(state->response->code != CREATED_2_01 /*CREATED*/) {
+			PRINTF("Registr. error\n");
+			PROCESS_EXIT();
+		}
+		set_proxy_resource_location(state->response, p);
+		PRINTF("proxy reg location: %s\n",proxy_state[p].res_location);
 	}
 	/*while(1) {
 
