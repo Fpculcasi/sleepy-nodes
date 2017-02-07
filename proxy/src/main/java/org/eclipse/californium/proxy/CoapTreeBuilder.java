@@ -1,3 +1,18 @@
+/******************************************************************************
+ * @title: CoapTreeBuilder
+ * 	Used to build the tree of resources to reach a resource with "path-like"
+ *  name (e.g. "dev/mfg")
+ * 
+ * @authors:
+ * 	- Francesco Paolo Culcasi	<fpculcasi@gmail.com>
+ * 	- Alessandro Martinelli		<a.martinelli1990@gmail.com>
+ * 	- Nicola Messina			<nicola.messina93@gmail.com>
+ * 
+ * @for: Advanced topics in Network Architectures and Wireless Systems
+ * 	UNIPI (2016/2017)
+ *
+ *****************************************************************************/
+
 package org.eclipse.californium.proxy;
 
 import org.eclipse.californium.core.CoapResource;
@@ -17,6 +32,10 @@ public class CoapTreeBuilder {
 	public CoapTreeBuilder(CoapResource root, VisibilityPolicy visibility){
 		this.root = root;
 		this.defaultVisibility = visibility;
+	}
+	
+	public VisibilityPolicy getVisibility() {
+		return defaultVisibility;
 	}
 	
 	protected class InfoPath{
@@ -93,7 +112,7 @@ public class CoapTreeBuilder {
 	 * resource, that the user is expected to add, and the name
 	 * of such last resource, extracted from the path.
 	 */
-	public boolean add(CoapResource newResource, String path, 
+	public synchronized boolean add(CoapResource newResource, String path, 
 			VisibilityPolicy vPolicy){
 		if (parametersAreValid(path) == false){
 			return false;
@@ -148,6 +167,11 @@ public class CoapTreeBuilder {
 				}
 			}	
 		}
+	}
+	
+	/* If not specified choice the default visibility */
+	public boolean add(CoapResource newResource, String path){
+		return add(newResource, path, defaultVisibility);
 	}
 	
 	protected void handleExistingResource(CoapResource child,

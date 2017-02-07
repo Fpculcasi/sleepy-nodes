@@ -23,7 +23,7 @@ import org.eclipse.californium.core.server.resources.CoapExchange;
 import org.eclipse.californium.core.server.resources.Resource;
 
 /**
- * The LocationResource implements CoAP's discovery service. It
+ * The ContainerResource implements CoAP's discovery service. It
  * responds to GET requests with a list of his child resources, i.e. links.
  */
 public class ContainerResource extends CoapResource {
@@ -41,7 +41,8 @@ public class ContainerResource extends CoapResource {
 	 * @param name the name
 	 * @param attributes the attributes of this resource
 	 */
-	public ContainerResource(String name, SNResourceAttributes attributes, InetAddress spIpAddress) {
+	public ContainerResource(String name, SNResourceAttributes attributes,
+			InetAddress spIpAddress) {
 		super(name);
 		
 		this.spIpAddress = spIpAddress;

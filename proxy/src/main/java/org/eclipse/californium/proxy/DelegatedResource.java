@@ -21,10 +21,56 @@ import org.eclipse.californium.core.server.resources.Resource;
 
 import static org.eclipse.californium.core.coap.MediaTypeRegistry.APPLICATION_LINK_FORMAT;
 
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+/**
+ * Resource Delegated by a sleepy node.
+ */
 public class DelegatedResource extends ActiveCoapResource {
 	
+	/* store the state for the delegated resource */
 	private String value;
+	/* head of the subtree of resources delegated from a certain same sleepy node */
 	private ContainerResource container;
+	
+	/* set by timer when timer expires, checked by handlePUT */
+	private boolean expired;
+	/* resource lifetime updated by PUT query attribute */
+	long lifetime;
+	
+	private Timer timer;
+	private ExpiredTimerTask currentTimerTask;
+	private Lock l = new ReentrantLock();
+
+	/**
+	 * TimerTask that implement a interrupt mechanism.
+	 * As soon as timer expires the delegated resource has to be de-registered
+	 * unless a PUT request arrives and interrupt the task.
+	 */
+	private class ExpiredTimerTask extends TimerTask{
+		private AtomicBoolean interrupt;
+		
+		public void interrupt() {
+			interrupt.set(true);
+		}
+		
+		@Override 
+		public void run(){
+			l.lock();
+			if(interrupt.get()){
+				l.unlock();
+				return;
+			}
+			expired = true;
+			System.out.println("timer expired for resource " + DelegatedResource.this);
+			//TODO: rimuovi la risorsa e bla bla bla
+			l.unlock();
+		}
+	}
 	
 	/**
 	 * @param name the name of the resource to be created.
@@ -37,31 +83,13 @@ public class DelegatedResource extends ActiveCoapResource {
 		super(name, true, isVisible);
 		
 		this.container = container;
+		expired = false;
 		
 		for(String attr: attributes.getAttributeKeySet()){
 			getAttributes().addAttribute(attr,
 					attributes.getAttributeValues(attr).get(0));
 		}
 	}
-
-	/**
-	 * Method for adding the given attributes to the newly created resource
-	 * or to an already existent one
-	 * @param attributes the attributes to be added to the resource
-	 * TODO: questa funzione ha senso solo nel nostro progetto,
-	 * quindi o la togliamo da qui o, se ce la vogliamo lasciare,
-	 * usiamo dei generici ResourceAttributes.
-	 * Una possibilita' sarebbe metterla dentro un file
-	 * utilities.java
-	 */
-	/*
-	public void addAttributes(SNResourceAttributes attributes) {
-		for(String attr: attributes.getAttributeKeySet()){
-			getAttributes().addAttribute(attr,
-					attributes.getAttributeValues(attr).get(0));
-		}
-	}
-	*/
 
 	/**
 	 * handleGET() returns the state of the resource stored in 'value' variable
@@ -78,38 +106,109 @@ public class DelegatedResource extends ActiveCoapResource {
 	
 	/**
 	 * handlePUT() modifies the the state of the delegated resource.
-	 * The first PUT request also initializes the resource by setting it
-	 * visible and observable.
+	 * The first PUT request by the owner sleepy node also initializes the
+	 * resource by setting it visible and observable.
 	 */
     @Override
     public void handlePUT(CoapExchange exchange) {
+    	
+    	/* all the update operations within the handlePut method have to be
+    	 * performed in mutual exclusion, in order to avoid critical races
+    	 * between endpoint updates and timer expiration*/
+    	l.lock();
+    	
     	String payload = exchange.getRequestText();
     	String response = null;
 		ResponseCode code;
-
-		value = payload; // update resource value
 		
-    	if(container.getSPIpAddress().equals(exchange.getSourceAddress())) {
-    		// Update from the owner sleepy node
-    		
-        	response = checkChanges(container); // check all the resources
-        	response.substring(0, response.length()-1); //remove last comma
-        	
-        	if(!isVisible()){ // not initialized yet
-        		setObservable(true);
-        		setVisible(true);
-        		code = CoAP.ResponseCode.CREATED;
-        	} else {
-        		code = CoAP.ResponseCode.CHANGED;
-        	}
-    	} else { // Any other EP
-    		if(!isVisible()){
-    			code = CoAP.ResponseCode.NOT_FOUND;
-    		}else{
-	    		setDirty(true); // set the resource ad dirty
-	    		code = CoAP.ResponseCode.CHANGED;
-    		}
-    	}
+		if(expired) {
+			// resource is expired thus it has been removed from the tree
+			
+			code = CoAP.ResponseCode.NOT_FOUND;
+			//expired = false; (??)
+			
+		} else { // the resource is not expired yet
+			
+			// update resource value
+			value = payload;
+			
+	    	if(container.getSPIpAddress().equals(exchange.getSourceAddress())){
+	    		// Update from the owner sleepy node
+
+	    		// get the query attributes from the request
+    			String query =exchange.getRequestOptions().getUriQueryString();
+    			
+	    		/* timer restart if lifetime is specified */
+	    		if(timer != null) {
+	    			// there is a running timer that has to be interrupted
+	    			
+	    			timer.cancel();
+	    			timer.purge();
+	    			currentTimerTask.interrupt();
+	    			
+	    			if(query != null && query.matches("^lt=.*$")) {
+	    				/* if the query contains something AND query contains
+	    				 * lifetime attribute */
+	    				
+	    				// update lifetime value
+	    				lifetime = Long.parseLong(query.split("=")[1]);
+	    				
+	    			//} else {
+	    				/* else is not needed as the timer is restarted with
+	    				 * previous lifetime*/
+	    			}
+    				timer = new Timer();
+    				currentTimerTask = new ExpiredTimerTask();
+    				timer.schedule(currentTimerTask, lifetime);
+    				
+	    		} else {
+	    			// no timers running
+	    			
+	    			if(query != null && query.matches("^lt=.*$")){
+	    				/* if the qeury contains something AND query contains
+	    				 * lifetime attribute start a timer*/
+	    				lifetime = Long.parseLong(query.split("=")[1]);
+	    				timer = new Timer();
+	    				currentTimerTask = new ExpiredTimerTask();
+	    				timer.schedule(currentTimerTask, lifetime);
+	    			//} else {
+	    				//do nothing
+	    			}
+	    		}
+	    		
+	    		/* get the list of "dirty" resources (updated by an endpoint
+	    		 *  different from the delegating sleepy node and not notified
+	    		 * yet to the owner) */
+	        	response = checkChanges(container);
+	        	response.substring(0, response.length()-1); //remove last comma
+	        	
+	        	if(!isVisible()){ // not initialized yet
+	        		
+	        		// set as visible (reachable) and observable
+	        		setObservable(true);
+	        		setVisible(true);
+	        		code = CoAP.ResponseCode.CREATED;
+	        		
+	        	} else {
+	        		code = CoAP.ResponseCode.CHANGED;
+	        	}
+	    	} else {
+	    		/* If the PUT request comes from an endpoint different from the
+	    		 * owner of the resource */
+	    		
+	    		if(!isVisible()){
+	    			code = CoAP.ResponseCode.NOT_FOUND;
+	    		}else{
+		    		setDirty(true); // set the resource as dirty
+		    		code = CoAP.ResponseCode.CHANGED;
+	    		}
+	    	}
+	    	
+	    	// notify all the observing node the resource has been updated
+	    	changed();
+		}
+		
+    	l.unlock();
     	
     	// build a response
     	if(response == null){
@@ -117,16 +216,17 @@ public class DelegatedResource extends ActiveCoapResource {
     	} else {
     		exchange.respond(code, response, APPLICATION_LINK_FORMAT);
     	}
-    	
-    	
-    	// TODO: handle life-time expiration
-    	
     }
     
+    /**
+     * Build the String listing dirty resources.
+     */
     public String checkChanges(Resource root) {
 		StringBuilder buffer = new StringBuilder();
 		for (Resource child: root.getChildren()) {
+			//all the resource of the subtree must be ActiveCoapResource
 			ActiveCoapResource c = (ActiveCoapResource) child;
+			
 			if(c.isVisible() && c.isDirty()) {
 				c.setDirty(false);
 				buffer.append("<")
