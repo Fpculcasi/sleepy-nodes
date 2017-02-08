@@ -8,12 +8,7 @@
 	*/
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-
-#include "net/ip/uip.h"
-#include "net/ipv6/uip-ds6.h"
-//#include "net/ip/uip-debug.h"
 
 #include "contiki.h"
 #include "contiki-net.h"
@@ -23,17 +18,7 @@
 #include "rest-engine.h"
 
 #include "proxy-resources.h"
-
-#define DEBUG 1
-#if DEBUG
-	#define PRINTF(...) printf(__VA_ARGS__)
-	#define PRINT6ADDR(addr) PRINTF("[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]", ((uint8_t *)addr)[0], ((uint8_t *)addr)[1], ((uint8_t *)addr)[2], ((uint8_t *)addr)[3], ((uint8_t *)addr)[4], ((uint8_t *)addr)[5], ((uint8_t *)addr)[6], ((uint8_t *)addr)[7], ((uint8_t *)addr)[8], ((uint8_t *)addr)[9], ((uint8_t *)addr)[10], ((uint8_t *)addr)[11], ((uint8_t *)addr)[12], ((uint8_t *)addr)[13], ((uint8_t *)addr)[14], ((uint8_t *)addr)[15])
-	#define PRINTLLADDR(lladdr) PRINTF("[%02x:%02x:%02x:%02x:%02x:%02x]", (lladdr)->addr[0], (lladdr)->addr[1], (lladdr)->addr[2], (lladdr)->addr[3], (lladdr)->addr[4], (lladdr)->addr[5])
-#else
-	#define PRINTF(...)
-	#define PRINT6ADDR(addr)
-	#define PRINTLLADDR(addr)
-#endif	
+#include "sn-utils.h"
 
 #define LOCAL_PORT		COAP_DEFAULT_PORT + 1
 #define REMOTE_PORT		COAP_DEFAULT_PORT
@@ -43,10 +28,9 @@
 #define MAX_ATTR_LEN		32
 
 #define NUM_PROXIES		2
-#define MAX_LINK_FORMAT_RESOURCES 10
 
 #define ERROR_CODE		255
-#define TOGGLE_INTERVAL 3
+#define TOGGLE_INTERVAL 5
 
 #define SN_BLOCKING_SEND(pkt_build_function, proxy_index, ...){ \
 	coap_packet_t* send_pkt; \
@@ -83,7 +67,6 @@ char res_toggle_red_value[MAX_PAYLOAD_LEN] = "default";
 
 /* GLOBAL VARIABLES DECLARATION */
 const char* well_known = ".well-known/core";
-static struct etimer et;
 
 struct proxy_state_t {
 	uip_ipaddr_t proxy_ip;
@@ -101,84 +84,10 @@ struct sn_state_t {
 	char payload[MAX_PAYLOAD_LEN];
 } s, *state = &s;
 
-struct link_format_resource_t {
-	char* resource_path;
-	char* rtt;
-	char* iff;
-};
-
-struct link_format_t {
-	struct link_format_resource_t resource[MAX_LINK_FORMAT_RESOURCES];
-	uint8_t res_num;
-};
-
-static void
-set_global_address(void)
-{
-	uip_ipaddr_t ipaddr;
-	int i;
-	uint8_t state;
-
-	uip_ip6addr(&ipaddr, 0xaaaa, 0, 0, 0, 0, 0, 0, 0);
-	uip_ds6_set_addr_iid(&ipaddr, &uip_lladdr);
-	uip_ds6_addr_add(&ipaddr, 0, ADDR_AUTOCONF);
-
-	PRINTF("IPv6 addresses: ");
-	for(i = 0; i < UIP_DS6_ADDR_NB; i++) {
-		state = uip_ds6_if.addr_list[i].state;
-		if(uip_ds6_if.addr_list[i].isused &&
-			(state == ADDR_TENTATIVE || state == ADDR_PREFERRED)) {
-			PRINT6ADDR(&uip_ds6_if.addr_list[i].ipaddr);
-			printf("\n");
-		}
-	}
-}
-
 /* This function is will be passed to COAP_BLOCKING_REQUEST() to handle responses. */
 void receiver_callback(void *response){
 	state->response = (coap_packet_t*)response;
 	PRINTF("---ret: respcode %d\n", state->response->code);
-}
-
-struct link_format_t* parse_link_format(char* payload){
-	//points to an entire row	
-	char* row;
-	//points to the components of a row (path + options)
-	char* row_component;
-	uint8_t res_num = 0;
-	static struct link_format_t lf_container[1];
-
-	memset(lf_container->resource, 0, sizeof(struct link_format_resource_t) * MAX_LINK_FORMAT_RESOURCES);
-
-	row = strtok(payload, ",");
-	while(row != NULL) {
-		row_component = strtok(row, ";");
-		while(row_component != NULL){
-			if(row_component[0] == '<'){
-				//found the resource path, i must trim out the angular parentesis
-				row_component[strlen(row_component)-1] = '\0';
-				lf_container->resource[res_num].resource_path = row_component + 1;
-			} else {
-				//found an option, i must trim out the double quotes
-				row_component[strlen(row_component)-1] = '\0';
-				if(strncmp(row_component,"rt",2) == 0){
-					lf_container->resource[res_num].rtt = row_component + 4;
-				} else if (strncmp(row_component,"if",2) == 0){
-					lf_container->resource[res_num].iff = row_component + 4;
-				}
-			}
-			row_component = strtok(NULL, ";");
-		}
-
-		row = strtok(NULL, ",");
-		res_num++;
-	}
-	lf_container->res_num = res_num;
-
-	PRINTF("### lf debug: %d resources\n",res_num);
-	PRINTF("### payload was %s: 1st respath: %s\n", payload, lf_container->resource[0].resource_path);
-
-	return lf_container;
 }
 
 /* Parses the response from the proxy */
@@ -220,9 +129,14 @@ void set_proxy_resource_value(coap_packet_t* pkt, char* remote_resource_path, ui
 	int len = coap_get_payload(pkt, &payload);
 	//trim out the proxy container prefix in the uri.
 	char* local_resource_path = remote_resource_path + strlen(proxy_state[0].res_location);
-	int ret = update_proxy_resource_by_path(local_resource_path, (char*)payload, len);	//mismatch among local and global uris
+	struct proxy_resource_t* res = search_proxy_resource_by_path(local_resource_path);
+
+	//i use the original buffer to store the new value
+	memcpy(res->value,(char*)payload,len);
+	res->value_len = len;
+	
 	PRINTF("GET returned for resource %s (local is %s)\n",state->uri,local_resource_path);
-	if(ret<0){
+	if(res == NULL){
 		PRINTF("Something bad in updating resource after GET request\n");
 	}
 }
@@ -263,18 +177,18 @@ coap_packet_t* proxy_registration(uint8_t proxy_index, resource_t* delegated_res
 }
 
 /*draft 5.4*/
-coap_packet_t* proxy_update_resource_value(uint8_t proxy_index, resource_t* delegated_resource,
-		uint32_t lifetime, void* data, int len){
+coap_packet_t* proxy_update_resource_value(uint8_t proxy_index, struct proxy_resource_t* proxy_resource,
+		uint32_t lifetime){
 	static coap_packet_t request[1];
 	
-	sprintf(state->uri, "%s/%s", proxy_state[proxy_index].res_location, delegated_resource->url);
+	sprintf(state->uri, "%s/%s", proxy_state[proxy_index].res_location, proxy_resource->resource->url);
 	sprintf(state->query, "lt=%d", lifetime);
 
 	coap_init_message(request, COAP_TYPE_CON, COAP_PUT, 0);
 	
 	coap_set_header_uri_path(request, state->uri);
 	coap_set_header_uri_query(request, state->query);
-	coap_set_payload(request, (uint8_t *)data, len);
+	coap_set_payload(request, (uint8_t *)proxy_resource->value, proxy_resource->value_len);
 
 	return request;
 }
@@ -305,7 +219,10 @@ void set_ep_id(){
 	state->ep_id = buf;
 }
 
-int p=0;
+struct proxy_resource_t *created_resource;
+static struct etimer et;
+const int p=0;
+
 const uint8_t* payload;
 struct link_format_t* lf;
 int i;
@@ -316,78 +233,87 @@ PROCESS_THREAD(sleepy_node, ev, data)
 	set_global_address();
 	coap_init_engine();
 
-	/*initialize proxies ip addresses and resources*/
-	ADD_PROXY(0, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x1);
-	ADD_PROXY(1, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x1);
-	clear_proxy_resource_memory();
-	initialize_proxy_resource(&res_toggle_red, res_toggle_red_value, strlen(res_toggle_red_value)+1);
-	
-
 	/*initialize test resource*/
 	rest_activate_resource(&res_toggle_red, "red_led");
+
+	/*initialize proxies ip addresses and resources*/
+	ADD_PROXY(0, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x1);
+	created_resource = initialize_proxy_resource(&res_toggle_red, 
+		res_toggle_red_value, strlen(res_toggle_red_value)+1);
 
 	set_ep_id();
 	PRINTF("ep:%s\n",state->ep_id);
 
-	//etimer_set(&et, TOGGLE_INTERVAL * CLOCK_SECOND);
-
-	/*for testing purposes, I register the same resource on all the proxies*/
-	for(p=0;p<NUM_PROXIES;p++){
-		/*Send discovery*/
-		SN_BLOCKING_SEND(proxy_discovery, p);
-		if(state->response->code != CONTENT_2_05 /*OK*/) {
-			PRINTF("Discov. error\n");
-			PROCESS_EXIT();
-		}
-		set_proxy_base_path(state->response, p);
-		PRINTF("proxy disc bp: %s\n",proxy_state[p].base_path);
-
-		/*Send registration*/
-		SN_BLOCKING_SEND(proxy_registration, p, &res_toggle_red, "sensors");
-		if(state->response->code != CREATED_2_01 /*CREATED*/) {
-			PRINTF("Registr. error\n");
-			PROCESS_EXIT();
-		}
-		set_proxy_resource_location(state->response, p);
-		PRINTF("proxy reg location: %s\n",proxy_state[p].res_location);
+	/*Send discovery*/
+	SN_BLOCKING_SEND(proxy_discovery, p);
+	if(state->response->code != CONTENT_2_05 /*OK*/) {
+		PRINTF("Discov. error\n");
+		PROCESS_EXIT();
 	}
+	set_proxy_base_path(state->response, p);
+	PRINTF("proxy disc bp: %s\n",proxy_state[p].base_path);
+
+	/*Send registration*/
+	SN_BLOCKING_SEND(proxy_registration, p, &res_toggle_red, "sensors");
+	if(state->response->code != CREATED_2_01 /*CREATED*/) {
+		PRINTF("Registr. error\n");
+		PROCESS_EXIT();
+	}
+	set_proxy_resource_location(state->response, p);
+	PRINTF("proxy reg location: %s\n",proxy_state[p].res_location);
 
 	/*provo ad aggiungere un valore per la risorsa led sul proxy 0 (non ha molto senso per ora)*/
-	SN_BLOCKING_SEND(proxy_update_resource_value, 0, &res_toggle_red, 3600, "lorem ipsum", 12);
+	SN_BLOCKING_SEND(proxy_update_resource_value, p, created_resource, 3600);
 	if(state->response->code == CONTENT_2_05){
 		//a list of modified resources is returned
-		const uint8_t* payload;
-		struct link_format_t* lf;
-		int i;
 		coap_get_payload(state->response, &payload);
 		//i am supposing the payload is a c-string
 		lf = parse_link_format((char*)payload);
 		for(i=0; i<lf->res_num; i++){
 			//send get requests for each resource in the payload 
-			SN_BLOCKING_SEND(proxy_get, 0, lf->resource[i].resource_path);
-			set_proxy_resource_value(state->response, lf->resource[i].resource_path, 0);
+			SN_BLOCKING_SEND(proxy_get, p, lf->resource[i].resource_path);
+			set_proxy_resource_value(state->response, lf->resource[i].resource_path, p);
 		}
-	} else if (state->response->code == NOT_FOUND_4_04){
-		//i must repeat the registration of this resource, since it expired
-		PRINTF("resource %s expired; resending registration\n");
-
-		/*Send registration*/
-		SN_BLOCKING_SEND(proxy_registration, p, &res_toggle_red, "sensors");
-		if(state->response->code != CREATED_2_01 /*CREATED*/) {
-			PRINTF("Registr. error\n");
-			PROCESS_EXIT();
-		}
-		set_proxy_resource_location(state->response, p);
-		PRINTF("proxy reg location: %s\n",proxy_state[p].res_location);
+	} else {
+		PRINTF("Something wrong with resource initialization\n");
 	}
-	/*while(1) {
 
+	etimer_set(&et, TOGGLE_INTERVAL * CLOCK_SECOND);
+
+	while(1) {
 		PROCESS_YIELD();
 		if(etimer_expired(&et)) {
-			//Query the proxy for notifications
-			//Perform some operations
+			PRINTF("--Toggle timer--\n");
+			SN_BLOCKING_SEND(proxy_update_resource_value, p, created_resource, 3600);
+			if(state->response->code == CONTENT_2_05){
+				//a list of modified resources is returned
+				coap_get_payload(state->response, &payload);
+				//i am supposing the payload is a c-string
+				lf = parse_link_format((char*)payload);
+				for(i=0; i<lf->res_num; i++){
+					//send get requests for each resource in the payload 
+					SN_BLOCKING_SEND(proxy_get, p, lf->resource[i].resource_path);
+					set_proxy_resource_value(state->response, lf->resource[i].resource_path, p);
+				}
+			} else if (state->response->code == NOT_FOUND_4_04){
+				//i must repeat the registration of this resource, since it expired
+				PRINTF("resource %s expired; resending registration\n", created_resource->resource->url);
+
+				/*Send registration*/
+				SN_BLOCKING_SEND(proxy_registration, p, &res_toggle_red, "sensors");
+				if(state->response->code != CREATED_2_01 /*CREATED*/) {
+					PRINTF("Registr. error\n");
+					PROCESS_EXIT();
+				}
+				set_proxy_resource_location(state->response, p);
+				PRINTF("proxy reg location: %s\n",proxy_state[p].res_location);
+			} else {
+				PRINTF("Something wrong with resource initialization\n");
+			}
+
+			etimer_reset(&et);		
 		}
-	}*/
+	}
 
 	PROCESS_END();
 }
