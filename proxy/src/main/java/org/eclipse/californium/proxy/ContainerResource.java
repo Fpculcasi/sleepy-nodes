@@ -26,7 +26,7 @@ import org.eclipse.californium.core.server.resources.Resource;
  * The ContainerResource implements CoAP's discovery service. It
  * responds to GET requests with a list of his child resources, i.e. links.
  */
-public class ContainerResource extends CoapResource {
+public class ContainerResource extends ActiveCoapResource {
 	
 	private CoapTreeBuilder coapTreeBuilder;
 	private InetAddress spIpAddress;
@@ -43,7 +43,7 @@ public class ContainerResource extends CoapResource {
 	 */
 	public ContainerResource(String name, SNResourceAttributes attributes,
 			InetAddress spIpAddress) {
-		super(name);
+		super(name, true, true);
 		
 		this.spIpAddress = spIpAddress;
 		this.coapTreeBuilder =

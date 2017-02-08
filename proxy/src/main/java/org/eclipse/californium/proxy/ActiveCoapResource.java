@@ -84,8 +84,8 @@ public class ActiveCoapResource extends CoapResource {
 	@Override
 	public void handleRequest(final Exchange exchange) {
 		CoapExchange coapExchange = new CoapExchange(exchange, this);
-		Code code = coapExchange.getRequestCode();
 		if (isActive()){
+			Code code = coapExchange.getRequestCode();
 			switch (code) {
 				case GET:	 handleGET(coapExchange); 	 break;
 				case POST:	 handlePOST(coapExchange);	 break;
