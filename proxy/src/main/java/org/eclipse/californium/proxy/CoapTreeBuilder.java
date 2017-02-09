@@ -1,14 +1,41 @@
+/******************************************************************************
+ * @title: CoapTreeBuilder
+ * 	Used to build the tree of resources to reach a resource with "path-like"
+ *  name (e.g. "dev/mfg")
+ * 
+ * @authors:
+ * 	- Francesco Paolo Culcasi	<fpculcasi@gmail.com>
+ * 	- Alessandro Martinelli		<a.martinelli1990@gmail.com>
+ * 	- Nicola Messina			<nicola.messina93@gmail.com>
+ * 
+ * @for: Advanced topics in Network Architectures and Wireless Systems
+ * 	UNIPI (2016/2017)
+ *
+ *****************************************************************************/
+
 package org.eclipse.californium.proxy;
 
 import org.eclipse.californium.core.CoapResource;
+import org.eclipse.californium.core.coap.CoAP;
+import org.eclipse.californium.core.server.resources.CoapExchange;
 import org.eclipse.californium.core.server.resources.Resource;
 
 public class CoapTreeBuilder {
 	
-	protected CoapResource root;
+	protected ActiveCoapResource root;
 	
-	public CoapTreeBuilder(CoapResource root){
+	// defaultVisibility is the visibility applied to a deleted/de-registered
+	// (by life-time expiration) resource
+	private VisibilityPolicy defaultVisibility;
+	
+	
+	public CoapTreeBuilder(ActiveCoapResource root, VisibilityPolicy visibility){
 		this.root = root;
+		this.defaultVisibility = visibility;
+	}
+	
+	public VisibilityPolicy getVisibility() {
+		return defaultVisibility;
 	}
 	
 	protected class InfoPath{
@@ -79,13 +106,13 @@ public class CoapTreeBuilder {
 	 * VisibilityPolicy.ALL_VISIBLE or VisibilityPolicy.ALL_INVISIBLE.
 	 * If a CoapResource has to be created, it will be created with 
 	 * the visibility specified by the policy. 
-	 * 
+	 * TODO: modify return description
 	 * @return a class containing the resource representing the
 	 * penultimate part of the path, i.e. the father of the last
 	 * resource, that the user is expected to add, and the name
 	 * of such last resource, extracted from the path.
 	 */
-	public boolean add(CoapResource newResource, String path, 
+	public synchronized boolean add(ActiveCoapResource newResource, String path, 
 			VisibilityPolicy vPolicy){
 		if (parametersAreValid(path) == false){
 			return false;
@@ -96,7 +123,7 @@ public class CoapTreeBuilder {
 		Resource currentFather = root;
 		// Class used to memorize remaining path and name of
 		// the resource that is currently being traversed or created. 
-		// It also consider if the alghoritm is considering the last part
+		// It also consider if the algorithm is considering the last part
 		// of the path
 		InfoPath iPath = new InfoPath(path);
 		while(true){
@@ -114,6 +141,7 @@ public class CoapTreeBuilder {
 					for(Resource child : toDelete.getChildren()){
 						newResource.add(child);
 					}
+					currentFather.delete(toDelete);
 				}
 				currentFather.add(newResource);
 				return true;
@@ -142,7 +170,12 @@ public class CoapTreeBuilder {
 		}
 	}
 	
-	protected static void handleExistingResource(CoapResource child,
+	/* If not specified, visibility is set to the default value for the tree */
+	public boolean add(ActiveCoapResource newResource, String path){
+		return add(newResource, path, defaultVisibility);
+	}
+	
+	protected void handleExistingResource(CoapResource child,
 			VisibilityPolicy vPolicy) {
 			System.out.println("traversing intermediate resource" 
 					+ " " + child.getName() + ", visibility " + child.isVisible() 
@@ -160,23 +193,92 @@ public class CoapTreeBuilder {
 			}		
 	}
 	
-	protected static Resource handleResourceCreation(
+	protected ActiveCoapResource handleResourceCreation(
 			String resourceName, Resource father, VisibilityPolicy vPolicy) {
 		// newResource is used to store the newly created resource
-		Resource newResource = null;
+		ActiveCoapResource newResource = null;
 		// Creation of an intermediate resource
 		switch (vPolicy){
 			case ALL_VISIBLE:
-				newResource = new CoapResource(resourceName, true);					
+				newResource = new ActiveCoapResource(resourceName, false, true);
 				break;
 			case ALL_INVISIBLE:					
-				newResource = new CoapResource(resourceName, false);
+				newResource = new ActiveCoapResource(resourceName, false, false){
+					@Override
+					public void handleGET(CoapExchange exchange){
+						exchange.respond(CoAP.ResponseCode.NOT_FOUND);
+					}
+				};
 				break;
 		}
 		father.add(newResource);
 		System.out.println("Created intermediate resource" 
-				+ " " + resourceName + ", visibility " + newResource.isVisible() 
+				+ " " + resourceName + ", visibility " + newResource.isVisible()
 				+ " and son of " + father.getName());	
 		return newResource;
-	}		
+	}
+	
+	public synchronized void remove(ActiveCoapResource child){
+		if (child == null){
+			return;
+		} 
+		if (child.equals(root)){
+			return;
+		}
+		
+		ActiveCoapResource parent = (ActiveCoapResource)child.getParent();
+		
+		if (!child.isActive()){
+			// The resource is an internal resource
+			if(child.getChildren().isEmpty()){
+				/* If the resource is an internal resource and it has
+				 * no child, it has to be removed 
+				 */
+				parent.delete(child);
+				if(parent.isActive() == false){
+					// the parent is an internal resource
+					remove(parent);
+				}
+				
+			} else {
+				/* If the resource is an internal resource and it has
+				 * some children, it must not be removed 
+				 */
+				return;
+			}
+		} else {
+			// The resource is an active resource
+			if(child.getChildren().isEmpty()){
+				/* The resource is an active resource with no children,
+				 * thus we can delete it and, iff the father 
+				 * is an internal resource
+				 */
+				parent.delete(child);
+				if(parent.isActive() == false){
+					// the parent is an internal resource
+					remove(parent);
+				}
+			} else {
+				/* The resource is an active resource with children, thus
+				 * before deliting it we have to assign his children
+				 * to a new resource. Then, we have to remove this resource from
+				 * his parent and replace it with the newly created resource.
+				 */
+				boolean visibility = 
+						(defaultVisibility == VisibilityPolicy.ALL_VISIBLE)? 
+								true : false;
+				
+				ActiveCoapResource newInternalResource =
+						new ActiveCoapResource(child.getName(), false, visibility);
+				
+				for(Resource son : child.getChildren()){
+					newInternalResource.add(son);
+				}
+				
+				parent.delete(child);
+				parent.add(newInternalResource);
+				
+			}
+		}
+	}
 }

@@ -13,6 +13,7 @@
  *****************************************************************************/
 package org.eclipse.californium.proxy;
 
+import java.net.InetAddress;
 import java.util.List;
 import org.eclipse.californium.core.CoapResource;
 import org.eclipse.californium.core.coap.CoAP.ResponseCode;
@@ -22,12 +23,13 @@ import org.eclipse.californium.core.server.resources.CoapExchange;
 import org.eclipse.californium.core.server.resources.Resource;
 
 /**
- * The LocationResource implements CoAP's discovery service. It
+ * The ContainerResource implements CoAP's discovery service. It
  * responds to GET requests with a list of his child resources, i.e. links.
  */
-public class ContainerResource extends CoapResource {
+public class ContainerResource extends ActiveCoapResource {
 	
 	private CoapTreeBuilder coapTreeBuilder;
+	private InetAddress spIpAddress;
 	
 	public CoapTreeBuilder getCoapTreeBuilder() {
 		return coapTreeBuilder;
@@ -39,10 +41,13 @@ public class ContainerResource extends CoapResource {
 	 * @param name the name
 	 * @param attributes the attributes of this resource
 	 */
-	public ContainerResource(String name, SNResourceAttributes attributes) {
-		super(name);
+	public ContainerResource(String name, SNResourceAttributes attributes,
+			InetAddress spIpAddress) {
+		super(name, true, true);
 		
-		this.coapTreeBuilder = new CoapTreeBuilder(this);
+		this.spIpAddress = spIpAddress;
+		this.coapTreeBuilder =
+				new CoapTreeBuilder(this, VisibilityPolicy.ALL_INVISIBLE);
 		
 		for(String attr: attributes.getAttributeKeySet()){
 			getAttributes().addAttribute(attr,
@@ -57,8 +62,10 @@ public class ContainerResource extends CoapResource {
 	 */
 	@Override
 	public void handleGET(CoapExchange exchange) {
-		String tree = discoverTree((Resource)this, exchange.getRequestOptions().getUriQuery());
-		exchange.respond(ResponseCode.CONTENT, tree, MediaTypeRegistry.APPLICATION_LINK_FORMAT);
+		String tree = discoverTree((Resource)this,
+				exchange.getRequestOptions().getUriQuery());
+		exchange.respond(ResponseCode.CONTENT, tree,
+				MediaTypeRegistry.APPLICATION_LINK_FORMAT);
 	}
 	
 	/**
@@ -81,5 +88,9 @@ public class ContainerResource extends CoapResource {
 			buffer.delete(buffer.length()-1, buffer.length());
 		
 		return buffer.toString();
+	}
+	
+	public InetAddress getSPIpAddress() {
+		return spIpAddress;
 	}
 }
