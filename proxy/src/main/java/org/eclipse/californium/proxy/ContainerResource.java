@@ -15,7 +15,6 @@ package org.eclipse.californium.proxy;
 
 import java.net.InetAddress;
 import java.util.List;
-import org.eclipse.californium.core.CoapResource;
 import org.eclipse.californium.core.coap.CoAP.ResponseCode;
 import org.eclipse.californium.core.coap.LinkFormat;
 import org.eclipse.californium.core.coap.MediaTypeRegistry;
