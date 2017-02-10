@@ -1,5 +1,6 @@
 /.metadata/
 /.recommenders/
+/obj_native/
 /obj_sky/
 /obj_z1/
 *.map
