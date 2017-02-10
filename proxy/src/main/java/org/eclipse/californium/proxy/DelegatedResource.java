@@ -34,9 +34,11 @@ public class DelegatedResource extends ActiveCoapResource {
 
 	/* store the state for the delegated resource */
 	private String value;
-	
-	/* head of the subtree of resources delegated from a certain same sleepy
-	 * node */
+
+	/*
+	 * head of the subtree of resources delegated from a certain same sleepy
+	 * node
+	 */
 	private ContainerResource container;
 
 	/* set by timer when timer expires, checked by handlePUT */
@@ -217,8 +219,8 @@ public class DelegatedResource extends ActiveCoapResource {
 				 */
 				response = checkChanges(container);
 				if (response != null) {
-					response.substring(0, response.length() - 1); // remove last
-																	// comma
+					// remove last comma
+					response.substring(0, response.length() - 1);
 				}
 
 				System.out.println("Here is the list of changes made to '"
@@ -284,7 +286,7 @@ public class DelegatedResource extends ActiveCoapResource {
 
 			/*
 			 * get the list of "dirty" resources into the subtree starting from
-			 * the resource
+			 * the resource "this"
 			 */
 			response = checkChanges(this);
 			if (response.length() != 0) {
@@ -311,7 +313,9 @@ public class DelegatedResource extends ActiveCoapResource {
 	 * Build the String listing dirty resources.
 	 * 
 	 * @param root
-	 * @return
+	 *            Starting point for the resource scan
+	 * @return String containing the list of "dirty" resources under the
+	 *         resource passed as argument
 	 */
 	private String checkChanges(Resource root) {
 		StringBuilder buffer = new StringBuilder();
