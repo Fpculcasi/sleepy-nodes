@@ -25,13 +25,17 @@
 #define MAX_PAYLOAD_LEN		192
 #define MAX_QUERY_LEN		64
 #define MAX_URI_LEN		64
-#define MAX_ATTR_LEN		32
 
 #define NUM_PROXIES		2
 #define MAX_LINK_FORMAT_RESOURCES 10
 
 #define ERROR_CODE		255
 #define TOGGLE_INTERVAL 	15
+
+/* sleepy-node error codes */
+#define SN_OK		0
+#define SN_ERROR	1
+#define SN_EXPIRED	2
 
 #define SN_BLOCKING_SEND(pkt_build_function, proxy_index, ...){ \
 	coap_packet_t* send_pkt; \
@@ -211,9 +215,11 @@ void set_proxy_resource_value(coap_packet_t* pkt, char* remote_resource_path, ui
 *  CoAP packet to send to the proxy 
 */
 
+coap_packet_t request[1];
+
 /*draft 5.1*/
 coap_packet_t* proxy_discovery(uint8_t proxy_index){
-	static coap_packet_t request[1];
+	//static coap_packet_t request[1];
 
 	coap_init_message(request, COAP_TYPE_CON, COAP_GET, 0);
 	coap_set_header_uri_path(request, well_known);
@@ -224,7 +230,7 @@ coap_packet_t* proxy_discovery(uint8_t proxy_index){
 
 /*draft 5.2*/
 coap_packet_t* proxy_registration(uint8_t proxy_index, struct proxy_resource_t* delegated_resource){
-	static coap_packet_t request[1];
+	//static coap_packet_t request[1];
 	struct link_format_t* lf;
 	char* delegated_rt;
 
@@ -251,7 +257,7 @@ coap_packet_t* proxy_registration(uint8_t proxy_index, struct proxy_resource_t* 
 /*draft 5.4*/
 coap_packet_t* proxy_update_resource_value(uint8_t proxy_index, struct proxy_resource_t* proxy_resource,
 		uint32_t lifetime){
-	static coap_packet_t request[1];
+	//static coap_packet_t request[1];
 	
 	sprintf(state->uri, "%s/%s", proxy_state[proxy_index].res_location, proxy_resource->resource->url);
 	sprintf(state->query, "lt=%d", lifetime);
@@ -266,7 +272,7 @@ coap_packet_t* proxy_update_resource_value(uint8_t proxy_index, struct proxy_res
 }
 
 coap_packet_t* proxy_get(uint8_t proxy_index, char* proxy_resource_path){
-	static coap_packet_t request[1];
+	//static coap_packet_t request[1];
 
 	strcpy(state->uri,proxy_resource_path);
 
@@ -275,6 +281,18 @@ coap_packet_t* proxy_get(uint8_t proxy_index, char* proxy_resource_path){
 	//sprintf(state->uri, "%s/%s", proxy_state[proxy_index].res_location, delegated_resource->url);
 	coap_set_header_uri_path(request, state->uri);
 	
+	return request;
+}
+
+coap_packet_t* proxy_check_updates(uint8_t proxy_index, char* local_path_prefix){
+	//static coap_packet_t request[1];
+
+	sprintf(state->uri,"%s/%s", proxy_state[proxy_index].res_location, local_path_prefix);
+	
+	coap_init_message(request, COAP_TYPE_CON, COAP_POST, 0);
+
+	coap_set_header_uri_path(request, state->uri);
+
 	return request;
 }
 	
@@ -291,22 +309,26 @@ void set_ep_id(){
 	state->ep_id = buf;
 }
 
-#define PROXY_DISCOVERY(proxy_id){ \
+#define PROXY_DISCOVERY(proxy_id, result){ \
 	SN_BLOCKING_SEND(proxy_discovery, proxy_id); \
-	if(state->response->code != CONTENT_2_05) { \
-		PRINTF("Discov. error\n"); \
+	if(state->response->code == CONTENT_2_05) { \
+		set_proxy_base_path(state->response, proxy_id); \
+		PRINTF("proxy disc bp: %s\n",proxy_state[proxy_id].base_path); \
+		result = SN_OK; \
+	} else { \
+		result = SN_ERROR; \
 	} \
-	set_proxy_base_path(state->response, proxy_id); \
-	PRINTF("proxy disc bp: %s\n",proxy_state[proxy_id].base_path); \
 }
 
-#define PROXY_RESOURCE_REGISTRATION(proxy_id, delegate_resource){ \
+#define PROXY_RESOURCE_REGISTRATION(proxy_id, delegate_resource, result){ \
 	SN_BLOCKING_SEND(proxy_registration, proxy_id, delegate_resource); \
-	if(state->response->code != CREATED_2_01) { \
-		PRINTF("Registr. error\n"); \
+	if(state->response->code == CREATED_2_01) { \
+		set_proxy_resource_location(state->response, proxy_id); \
+		PRINTF("proxy reg location: %s\n",proxy_state[proxy_id].res_location); \
+		result = SN_OK; \
+	} else { \
+		result = SN_ERROR; \
 	} \
-	set_proxy_resource_location(state->response, proxy_id); \
-	PRINTF("proxy reg location: %s\n",proxy_state[proxy_id].res_location); \
 }
 
 #define PROXY_GET(proxy_id, resource_path){ \
@@ -314,33 +336,50 @@ void set_ep_id(){
 	set_proxy_resource_value(state->response, resource_path, proxy_id); \
 }
 
-/* initializes or update resource */
-#define PROXY_RESOURCE_PUT(proxy_id, delegated_resource, lifetime, expired){ \
+#define CHECK_GET_UPDATES(proxy_id, link_format_payload){ \
 	static const uint8_t* __payload; \
 	static struct link_format_t* __lf; \
 	static int __i; \
 	int __len; \
-	*expired = 0; \
+	/* a list of modified resources is returned */ \
+	__len = coap_get_payload(link_format_payload, &__payload); \
+	if(__len != 0){ \
+		__lf = parse_link_format((char*)__payload); \
+		PRINTF("Getting updates for %d resources\n",__lf->res_num); \
+		for(__i=0; __i<__lf->res_num; __i++){ \
+			/* send get requests for each resource in the payload */ \
+			PROXY_GET(proxy_id, __lf->resource[__i].resource_path); \
+		} \
+	} \
+}
+
+/* initializes or update resource */
+#define PROXY_RESOURCE_PUT(proxy_id, delegated_resource, lifetime, result){ \
+	result = SN_OK; \
 	SN_BLOCKING_SEND(proxy_update_resource_value, proxy_id, delegated_resource, lifetime); \
 	if(state->response->code == CONTENT_2_05 || state->response->code == CHANGED_2_04){ \
-		/* a list of modified resources is returned */ \
-		__len = coap_get_payload(state->response, &__payload); \
-		if(__len != 0){ \
-			__lf = parse_link_format((char*)__payload); \
-			for(__i=0; __i<__lf->res_num; __i++){ \
-				/* send get requests for each resource in the payload */ \
-				PROXY_GET(proxy_id, __lf->resource[__i].resource_path); \
-			} \
-		} \
+		/* check for updates from my delegated resources, and get their updated value */ \
+		CHECK_GET_UPDATES(proxy_id, state->response); \
 	} else if (state->response->code == NOT_FOUND_4_04){ \
 		/* i must repeat the registration of this resource, since it expired */ \
-		PRINTF("resource %s expired; resending registration\n", delegated_resource->resource->url); \
-		PROXY_RESOURCE_REGISTRATION(proxy_id, delegated_resource); \
-		*expired = 1; \
+		PROXY_RESOURCE_REGISTRATION(proxy_id, delegated_resource, result); \
+		result = SN_EXPIRED; \
 	} else if (state->response->code == CREATED_2_01){ \
 		PRINTF("%s initialization ok\n", delegated_resource->resource->url); \
 	} else { \
-		PRINTF("Something wrong with %s initialization\n", delegated_resource->resource->url); \
+		result = SN_ERROR; \
+	} \
+}
+
+#define PROXY_ASK_UPDATES(proxy_id, local_path_prefix, result){ \
+	result = SN_OK; \
+	SN_BLOCKING_SEND(proxy_check_updates, proxy_id, local_path_prefix); \
+	if(state->response->code == CHANGED_2_04){ \
+		CHECK_GET_UPDATES(proxy_id, state->response); \
+	} else if(state->response->code == VALID_2_03){ \
+		PRINTF("Checking changes: no updates\n"); \
+	} else { \
+		result = SN_ERROR; \
 	} \
 }
 
@@ -359,7 +398,7 @@ struct proxy_resource_t *delegated_counter;
 static struct etimer et;
 
 int counter = 0;
-int expired;
+int result;
 
 PROCESS_THREAD(sleepy_node, ev, data)
 {
@@ -379,12 +418,24 @@ PROCESS_THREAD(sleepy_node, ev, data)
 	PRINTF("ep:%s\n",state->ep_id);
 
 	/*Send discovery*/
-	PROXY_DISCOVERY(0);
+	PROXY_DISCOVERY(0, result);
+	if(result == SN_ERROR){
+		PRINTF("Discovery error!\n");
+		PROCESS_EXIT();
+	}
 
 	/*Send registration*/
-	PROXY_RESOURCE_REGISTRATION(0, delegated_counter);
+	PROXY_RESOURCE_REGISTRATION(0, delegated_counter, result);
+	if(result == SN_ERROR){
+		PRINTF("%s registration error!\n", delegated_counter->resource->url);
+		PROCESS_EXIT();
+	}
 
-	PROXY_RESOURCE_PUT(0, delegated_counter, 10, &expired);
+	PROXY_RESOURCE_PUT(0, delegated_counter, 10, result);
+	if(result == SN_ERROR){
+		PRINTF("%s initialization error!\n",delegated_counter->resource->url);
+		PROCESS_EXIT();
+	}
 
 	etimer_set(&et, TOGGLE_INTERVAL * CLOCK_SECOND);
 
@@ -392,18 +443,26 @@ PROCESS_THREAD(sleepy_node, ev, data)
 		PROCESS_YIELD();
 		if(etimer_expired(&et)) {
 			PRINTF("--WAKE UP!--\n");
-			
-			/*TODO: ask for updates using POST*/
+
+			PRINTF("Checking for updates...\n");
+			PROXY_ASK_UPDATES(0, "", result);
+			if(result == SN_ERROR){
+				PRINTF("Error checking updates for this sleepy node\n");
+			}
 			
 			//The resource is updated (its value is read from the sensor)
 			counter++;
 			sprintf(delegated_counter->value,"counter: %d",counter);
 			delegated_counter->value_len = strlen(delegated_counter->value);
 
-			PROXY_RESOURCE_PUT(0, delegated_counter, 10, &expired);
-			if(expired){
+			PRINTF("Submitting the new sensor value\n");
+			PROXY_RESOURCE_PUT(0, delegated_counter, 10, result);
+			if(result == SN_EXPIRED){
 				//The programmer chooses to re-send the value
-				PROXY_RESOURCE_PUT(0, delegated_counter, 10, &expired);
+				PRINTF("resource %s expired; re-initializing\n", delegated_counter->resource->url);
+				PROXY_RESOURCE_PUT(0, delegated_counter, 10, result);
+			} else if(result == SN_ERROR){
+				PRINTF("%s resource update error\n", delegated_counter->resource->url);
 			}
 
 			etimer_reset(&et);		
