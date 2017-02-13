@@ -1,12 +1,11 @@
 /**
 	* \file
-	*		Sleepy node example
+	*		Sleepy node methods
 	* \authors
 	*		Francesco Paolo Culcasi	<fpculcasi@gmail.com>
 	*		Alessandro Martinelli	<a.martinelli1990@gmail.com>
 	*		Nicola Messina		<nicola.messina93@gmail.com>
 	*/
-
 #include <stdio.h>
 #include <string.h>
 
@@ -17,76 +16,15 @@
 #include "er-coap-engine.h"
 #include "rest-engine.h"
 
-#include "proxy-resources.h"
-#include "sn-utils.h"
-
-#define LOCAL_PORT		COAP_DEFAULT_PORT + 1
-#define REMOTE_PORT		COAP_DEFAULT_PORT
-#define MAX_PAYLOAD_LEN		192
-#define MAX_QUERY_LEN		64
-#define MAX_URI_LEN		64
-
-#define NUM_PROXIES		2
-#define MAX_LINK_FORMAT_RESOURCES 10
-
-#define ERROR_CODE		255
-#define TOGGLE_INTERVAL 	15
-
-/* sleepy-node error codes */
-#define SN_OK		0
-#define SN_ERROR	1
-#define SN_EXPIRED	2
-
-#define SN_BLOCKING_SEND(pkt_build_function, proxy_index, ...){ \
-	coap_packet_t* send_pkt; \
-	if(proxy_index >= NUM_PROXIES){ \
-		PRINTF("proxy_index out of bound\n"); \
-		state->response->code = ERROR_CODE; \
-	} else { \
-		send_pkt = pkt_build_function(proxy_index, ##__VA_ARGS__); \
-		PRINTF("+++sent: %s?%s\n",send_pkt->uri_path,send_pkt->uri_query); \
-		COAP_BLOCKING_REQUEST(&(proxy_state[proxy_index].proxy_ip), \
-			UIP_HTONS(REMOTE_PORT), send_pkt, receiver_callback); \
-	} \
-}
- 
-#define ADD_PROXY(proxy_index, a0, a1, a2, a3, a4, a5, a6, a7) {	\
-	if(proxy_index >= NUM_PROXIES){ \
-		PRINTF("proxy_index out of bound\n"); \
-	} else { \
-		uip_ip6addr(&proxy_state[proxy_index].proxy_ip, a0, a1, a2, a3, a4, a5, a6, a7); \
-	} \
-}	
+#include "sleepy-node.h"
 
 /* GLOBAL VARIABLES DECLARATION */
 const char* well_known = ".well-known/core";
+struct sn_state_t s;
 
-struct proxy_state_t {
-	uip_ipaddr_t proxy_ip;
-	char base_path[MAX_URI_LEN];
-	char res_location[MAX_URI_LEN];
-} proxy_state[NUM_PROXIES];
-	
-struct sn_state_t {
-	coap_packet_t* response;
-	char* ep_id;
-
-	/*request variables*/
-	char query[MAX_QUERY_LEN];
-	char uri[MAX_URI_LEN];
-	char payload[MAX_PAYLOAD_LEN];
-} s, *state = &s;
-
-struct link_format_resource_t {
-	char* resource_path;
-	char* rtt;
-	char* iff;
-};
-
-struct link_format_t {
-	struct link_format_resource_t resource[MAX_LINK_FORMAT_RESOURCES];
-	uint8_t res_num;
-};
+struct proxy_state_t sn_proxy_state[NUM_PROXIES];
+struct sn_state_t *sn_state = &s;
+int sn_status = SN_OK;
 
 struct link_format_t* parse_link_format(char* payload){
 	//points to an entire row	
@@ -137,12 +75,12 @@ struct link_format_t* parse_link_format(char* payload){
 
 /* This function is will be passed to COAP_BLOCKING_REQUEST() to handle responses. */
 void receiver_callback(void *response){
-	state->response = (coap_packet_t*)response;
-	PRINTF("---ret: respcode %d\n", state->response->code);
+	sn_state->response = (coap_packet_t*)response;
+	PRINTF("---ret: respcode %d\n", sn_state->response->code);
 }
 
 /* Parses the response from the proxy */
-void set_proxy_base_path(coap_packet_t* pkt, uint8_t proxy_index){
+void get_proxy_base_path(coap_packet_t* pkt, uint8_t proxy_index){
 	const uint8_t* payload;
 	struct link_format_t* lf;
 	if(proxy_index >= NUM_PROXIES){
@@ -152,11 +90,11 @@ void set_proxy_base_path(coap_packet_t* pkt, uint8_t proxy_index){
 	coap_get_payload(pkt, &payload);
 	//i am supposing the payload is a c-string
 	lf = parse_link_format((char*)payload);
-	strcpy(proxy_state[proxy_index].base_path,lf->resource[0].resource_path);
+	strcpy(sn_proxy_state[proxy_index].base_path,lf->resource[0].resource_path);
 }
 
 /* Set the location on the proxy where the delegated resource has been stored */
-void set_proxy_resource_location(coap_packet_t* pkt, uint8_t proxy_index){
+void get_proxy_resource_location(coap_packet_t* pkt, uint8_t proxy_index){
 	const char* tmp;
 	int len;
 
@@ -166,18 +104,18 @@ void set_proxy_resource_location(coap_packet_t* pkt, uint8_t proxy_index){
 	}
 	
 	len = coap_get_header_location_path(pkt,&tmp);
-	memcpy(&(proxy_state[proxy_index].res_location[1]), tmp, len);
+	memcpy(&(sn_proxy_state[proxy_index].res_location[1]), tmp, len);
 
 	//add a heading '/'
-	proxy_state[proxy_index].res_location[0] = '/';
+	sn_proxy_state[proxy_index].res_location[0] = '/';
 	//turn the received location into a string
-	proxy_state[proxy_index].res_location[len+1] = '\0';
+	sn_proxy_state[proxy_index].res_location[len+1] = '\0';
 	
 	//PRINTF("### %s", tmp);
 }
 
 /*Set the value of a resource after having received it within a coap_packet*/
-void set_proxy_resource_value(coap_packet_t* pkt, char* remote_resource_path, uint8_t proxy_index){
+void get_proxy_resource_value(coap_packet_t* pkt, char* remote_resource_path, uint8_t proxy_index){
 	const uint8_t* payload;
 	int len = coap_get_payload(pkt, &payload);
 
@@ -188,7 +126,7 @@ void set_proxy_resource_value(coap_packet_t* pkt, char* remote_resource_path, ui
 	*  the resource uri has no '/' in front of it 
 	*/
 	char* local_resource_path = remote_resource_path + 
-		strlen(proxy_state[proxy_index].res_location) + 1;
+		strlen(sn_proxy_state[proxy_index].res_location) + 1;
 	PRINTF("GET returned for resource %s (local is %s)\n",remote_resource_path,local_resource_path);
 
 	struct proxy_resource_t* res = search_proxy_resource_by_path(local_resource_path);
@@ -238,18 +176,18 @@ coap_packet_t* proxy_registration(uint8_t proxy_index, struct proxy_resource_t* 
 	lf = parse_link_format((char*)delegated_resource->resource->attributes);
 	delegated_rt = lf[0].resource->rtt;
 	if(delegated_rt==NULL){
-		sprintf(state->query, "ep=%s",state->ep_id);
+		sprintf(sn_state->query, "ep=%s",sn_state->ep_id);
 	} else {
-		sprintf(state->query, "ep=%s&rt=%s",state->ep_id,delegated_rt);
+		sprintf(sn_state->query, "ep=%s&rt=%s",sn_state->ep_id,delegated_rt);
 	}
 	
-	sprintf(state->payload, "</%s>;%s",delegated_resource->resource->url,delegated_resource->resource->attributes);
+	sprintf(sn_state->payload, "</%s>;%s",delegated_resource->resource->url,delegated_resource->resource->attributes);
 
 	coap_init_message(request, COAP_TYPE_CON, COAP_POST, 0);
 	
-	coap_set_header_uri_path(request, proxy_state[proxy_index].base_path);
-	coap_set_header_uri_query(request, state->query);
-	coap_set_payload(request, (uint8_t *)state->payload, strlen(state->payload)+1);
+	coap_set_header_uri_path(request, sn_proxy_state[proxy_index].base_path);
+	coap_set_header_uri_query(request, sn_state->query);
+	coap_set_payload(request, (uint8_t *)sn_state->payload, strlen(sn_state->payload)+1);
 
 	return request;
 }
@@ -259,13 +197,13 @@ coap_packet_t* proxy_update_resource_value(uint8_t proxy_index, struct proxy_res
 		uint32_t lifetime){
 	//static coap_packet_t request[1];
 	
-	sprintf(state->uri, "%s/%s", proxy_state[proxy_index].res_location, proxy_resource->resource->url);
-	sprintf(state->query, "lt=%d", lifetime);
+	sprintf(sn_state->uri, "%s/%s", sn_proxy_state[proxy_index].res_location, proxy_resource->resource->url);
+	sprintf(sn_state->query, "lt=%d", lifetime);
 
 	coap_init_message(request, COAP_TYPE_CON, COAP_PUT, 0);
 	
-	coap_set_header_uri_path(request, state->uri);
-	coap_set_header_uri_query(request, state->query);
+	coap_set_header_uri_path(request, sn_state->uri);
+	coap_set_header_uri_query(request, sn_state->query);
 	coap_set_payload(request, (uint8_t *)proxy_resource->value, proxy_resource->value_len);
 
 	return request;
@@ -274,12 +212,12 @@ coap_packet_t* proxy_update_resource_value(uint8_t proxy_index, struct proxy_res
 coap_packet_t* proxy_get(uint8_t proxy_index, char* proxy_resource_path){
 	//static coap_packet_t request[1];
 
-	strcpy(state->uri,proxy_resource_path);
+	strcpy(sn_state->uri,proxy_resource_path);
 
 	coap_init_message(request, COAP_TYPE_CON, COAP_GET, 0);
 
-	//sprintf(state->uri, "%s/%s", proxy_state[proxy_index].res_location, delegated_resource->url);
-	coap_set_header_uri_path(request, state->uri);
+	//sprintf(state->uri, "%s/%s", sn_proxy_state[proxy_index].res_location, delegated_resource->url);
+	coap_set_header_uri_path(request, sn_state->uri);
 	
 	return request;
 }
@@ -287,11 +225,11 @@ coap_packet_t* proxy_get(uint8_t proxy_index, char* proxy_resource_path){
 coap_packet_t* proxy_check_updates(uint8_t proxy_index, char* local_path_prefix){
 	//static coap_packet_t request[1];
 
-	sprintf(state->uri,"%s/%s", proxy_state[proxy_index].res_location, local_path_prefix);
+	sprintf(sn_state->uri,"%s/%s", sn_proxy_state[proxy_index].res_location, local_path_prefix);
 	
 	coap_init_message(request, COAP_TYPE_CON, COAP_POST, 0);
 
-	coap_set_header_uri_path(request, state->uri);
+	coap_set_header_uri_path(request, sn_state->uri);
 
 	return request;
 }
@@ -306,168 +244,6 @@ void set_ep_id(){
 		((uint8_t *)&uip_lladdr)[2], ((uint8_t *)&uip_lladdr)[3],
 		((uint8_t *)&uip_lladdr)[4], ((uint8_t *)&uip_lladdr)[5],
 		((uint8_t *)&uip_lladdr)[6], ((uint8_t *)&uip_lladdr)[7]);
-	state->ep_id = buf;
-}
-
-#define PROXY_DISCOVERY(proxy_id, result){ \
-	SN_BLOCKING_SEND(proxy_discovery, proxy_id); \
-	if(state->response->code == CONTENT_2_05) { \
-		set_proxy_base_path(state->response, proxy_id); \
-		PRINTF("proxy disc bp: %s\n",proxy_state[proxy_id].base_path); \
-		result = SN_OK; \
-	} else { \
-		result = SN_ERROR; \
-	} \
-}
-
-#define PROXY_RESOURCE_REGISTRATION(proxy_id, delegate_resource, result){ \
-	SN_BLOCKING_SEND(proxy_registration, proxy_id, delegate_resource); \
-	if(state->response->code == CREATED_2_01) { \
-		set_proxy_resource_location(state->response, proxy_id); \
-		PRINTF("proxy reg location: %s\n",proxy_state[proxy_id].res_location); \
-		result = SN_OK; \
-	} else { \
-		result = SN_ERROR; \
-	} \
-}
-
-#define PROXY_GET(proxy_id, resource_path){ \
-	SN_BLOCKING_SEND(proxy_get, proxy_id, resource_path); \
-	set_proxy_resource_value(state->response, resource_path, proxy_id); \
-}
-
-#define CHECK_GET_UPDATES(proxy_id, link_format_payload){ \
-	static const uint8_t* __payload; \
-	static struct link_format_t* __lf; \
-	static int __i; \
-	int __len; \
-	/* a list of modified resources is returned */ \
-	__len = coap_get_payload(link_format_payload, &__payload); \
-	if(__len != 0){ \
-		__lf = parse_link_format((char*)__payload); \
-		PRINTF("Getting updates for %d resources\n",__lf->res_num); \
-		for(__i=0; __i<__lf->res_num; __i++){ \
-			/* send get requests for each resource in the payload */ \
-			PROXY_GET(proxy_id, __lf->resource[__i].resource_path); \
-		} \
-	} \
-}
-
-/* initializes or update resource */
-#define PROXY_RESOURCE_PUT(proxy_id, delegated_resource, lifetime, result){ \
-	result = SN_OK; \
-	SN_BLOCKING_SEND(proxy_update_resource_value, proxy_id, delegated_resource, lifetime); \
-	if(state->response->code == CONTENT_2_05 || state->response->code == CHANGED_2_04){ \
-		/* check for updates from my delegated resources, and get their updated value */ \
-		CHECK_GET_UPDATES(proxy_id, state->response); \
-	} else if (state->response->code == NOT_FOUND_4_04){ \
-		/* i must repeat the registration of this resource, since it expired */ \
-		PROXY_RESOURCE_REGISTRATION(proxy_id, delegated_resource, result); \
-		result = SN_EXPIRED; \
-	} else if (state->response->code == CREATED_2_01){ \
-		PRINTF("%s initialization ok\n", delegated_resource->resource->url); \
-	} else { \
-		result = SN_ERROR; \
-	} \
-}
-
-#define PROXY_ASK_UPDATES(proxy_id, local_path_prefix, result){ \
-	result = SN_OK; \
-	SN_BLOCKING_SEND(proxy_check_updates, proxy_id, local_path_prefix); \
-	if(state->response->code == CHANGED_2_04){ \
-		CHECK_GET_UPDATES(proxy_id, state->response); \
-	} else if(state->response->code == VALID_2_03){ \
-		PRINTF("Checking changes: no updates\n"); \
-	} else { \
-		result = SN_ERROR; \
-	} \
-}
-
-PROCESS(sleepy_node, "Sleepy Node");
-AUTOSTART_PROCESSES(&sleepy_node);
-
-/* TEST RESOURCE */
-RESOURCE(res_counter,
-         "title=\"Counter\";rt=\"utility\";ct=0",
-         NULL,
-         NULL,
-         NULL,
-         NULL);
-char res_counter_value[MAX_PAYLOAD_LEN] = "default";
-struct proxy_resource_t *delegated_counter;
-static struct etimer et;
-
-int counter = 0;
-int result;
-
-PROCESS_THREAD(sleepy_node, ev, data)
-{
-	PROCESS_BEGIN();	
-	set_global_address();
-	coap_init_engine();
-
-	/*initialize test resource*/
-	rest_activate_resource(&res_counter, "counter");
-
-	/*initialize proxies ip addresses and resources*/
-	ADD_PROXY(0, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x1);
-	delegated_counter = initialize_proxy_resource(&res_counter, 
-		res_counter_value, strlen(res_counter_value)+1);
-
-	set_ep_id();
-	PRINTF("ep:%s\n",state->ep_id);
-
-	/*Send discovery*/
-	PROXY_DISCOVERY(0, result);
-	if(result == SN_ERROR){
-		PRINTF("Discovery error!\n");
-		PROCESS_EXIT();
-	}
-
-	/*Send registration*/
-	PROXY_RESOURCE_REGISTRATION(0, delegated_counter, result);
-	if(result == SN_ERROR){
-		PRINTF("%s registration error!\n", delegated_counter->resource->url);
-		PROCESS_EXIT();
-	}
-
-	PROXY_RESOURCE_PUT(0, delegated_counter, 10, result);
-	if(result == SN_ERROR){
-		PRINTF("%s initialization error!\n",delegated_counter->resource->url);
-		PROCESS_EXIT();
-	}
-
-	etimer_set(&et, TOGGLE_INTERVAL * CLOCK_SECOND);
-
-	while(1) {
-		PROCESS_YIELD();
-		if(etimer_expired(&et)) {
-			PRINTF("--WAKE UP!--\n");
-
-			PRINTF("Checking for updates...\n");
-			PROXY_ASK_UPDATES(0, "", result);
-			if(result == SN_ERROR){
-				PRINTF("Error checking updates for this sleepy node\n");
-			}
-			
-			//The resource is updated (its value is read from the sensor)
-			counter++;
-			sprintf(delegated_counter->value,"counter: %d",counter);
-			delegated_counter->value_len = strlen(delegated_counter->value);
-
-			PRINTF("Submitting the new sensor value\n");
-			PROXY_RESOURCE_PUT(0, delegated_counter, 10, result);
-			if(result == SN_EXPIRED){
-				//The programmer chooses to re-send the value
-				PRINTF("resource %s expired; re-initializing\n", delegated_counter->resource->url);
-				PROXY_RESOURCE_PUT(0, delegated_counter, 10, result);
-			} else if(result == SN_ERROR){
-				PRINTF("%s resource update error\n", delegated_counter->resource->url);
-			}
-
-			etimer_reset(&et);		
-		}
-	}
-
-	PROCESS_END();
+	sn_state->ep_id = buf;
+	PRINTF("ep:%s\n",sn_state->ep_id);
 }
