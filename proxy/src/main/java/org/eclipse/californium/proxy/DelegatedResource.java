@@ -17,7 +17,6 @@ package org.eclipse.californium.proxy;
 import org.eclipse.californium.core.coap.CoAP;
 import org.eclipse.californium.core.coap.CoAP.ResponseCode;
 import org.eclipse.californium.core.server.resources.CoapExchange;
-import org.eclipse.californium.core.server.resources.Resource;
 
 import static org.eclipse.californium.core.coap.MediaTypeRegistry.APPLICATION_LINK_FORMAT;
 
@@ -217,11 +216,7 @@ public class DelegatedResource extends ActiveCoapResource {
 				 * different from the delegating sleepy node and not notified
 				 * yet to the owner)
 				 */
-				response = checkChanges(container);
-				if (response != null) {
-					// remove last comma
-					response.substring(0, response.length() - 1);
-				}
+				response = Utilities.checkChanges(container);
 
 				System.out.println("Here is the list of changes made to '"
 						+ getName() + "' by different endpoints: " + response);
@@ -288,10 +283,8 @@ public class DelegatedResource extends ActiveCoapResource {
 			 * get the list of "dirty" resources into the subtree starting from
 			 * the resource "this"
 			 */
-			response = checkChanges(this);
-			if (response.length() != 0) {
-				// remove last comma
-				response.substring(0, response.length() - 1);
+			response = Utilities.checkChanges(this);
+			if (response != null) {
 				code = ResponseCode.CHANGED;
 			} else {
 				code = ResponseCode.VALID;
@@ -307,30 +300,5 @@ public class DelegatedResource extends ActiveCoapResource {
 		} else {
 			exchange.respond(code, response, APPLICATION_LINK_FORMAT);
 		}
-	}
-
-	/**
-	 * Build the String listing dirty resources.
-	 * 
-	 * @param root
-	 *            Starting point for the resource scan
-	 * @return String containing the list of "dirty" resources under the
-	 *         resource passed as argument
-	 */
-	private String checkChanges(Resource root) {
-		StringBuilder buffer = new StringBuilder();
-		for (Resource child : root.getChildren()) {
-			// all the resource of the subtree must be ActiveCoapResource
-			ActiveCoapResource c = (ActiveCoapResource) child;
-
-			if (c.isVisible() && c.isDirty()) {
-				c.setDirty(false);
-				buffer.append("<").append(child.getPath())
-						.append(child.getName()).append(">").append(",");
-			}
-			buffer.append(checkChanges(child));
-		}
-
-		return (buffer.length() == 0) ? null : buffer.toString();
 	}
 }
