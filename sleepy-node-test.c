@@ -31,9 +31,18 @@ RESOURCE(res_counter,
          NULL,
          NULL,
          NULL);
+RESOURCE(res_counter_name,
+	"title=\"CounterName\";rt=\"utility\";ct=0",
+         NULL,
+         NULL,
+         NULL,
+         NULL);
 
 char res_counter_value[MAX_PAYLOAD_LEN] = "default";
+char res_counter_name_value[20];
+
 struct proxy_resource_t *delegated_counter;
+struct proxy_resource_t *delegated_counter_name;
 static struct etimer et;
 
 int counter = 0;
@@ -46,11 +55,14 @@ PROCESS_THREAD(sleepy_node, ev, data)
 
 	/*initialize test resource*/
 	rest_activate_resource(&res_counter, "counter");
+	rest_activate_resource(&res_counter_name, "counter/n");
 
 	/*initialize proxies ip addresses and resources*/
 	ADD_PROXY(0, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x1);
 	delegated_counter = initialize_proxy_resource(&res_counter, 
 		res_counter_value, strlen(res_counter_value)+1);
+	delegated_counter_name = initialize_proxy_resource(&res_counter_name, 
+		res_counter_name_value, 0);
 
 	set_ep_id();
 
@@ -61,14 +73,27 @@ PROCESS_THREAD(sleepy_node, ev, data)
 		PROCESS_EXIT();
 	}
 
-	/*Send registration*/
+	/*Counter registration*/
 	PROXY_RESOURCE_REGISTRATION(0, delegated_counter);
 	if(sn_status == SN_ERROR){
 		PRINTF("%s registration error!\n", delegated_counter->resource->url);
 		PROCESS_EXIT();
 	}
 
-	PROXY_RESOURCE_PUT(0, delegated_counter, 10);
+	PROXY_RESOURCE_PUT(0, delegated_counter, 20);
+	if(sn_status == SN_ERROR){
+		PRINTF("%s initialization error!\n",delegated_counter->resource->url);
+		PROCESS_EXIT();
+	}
+
+	/*Counter name registration*/
+	PROXY_RESOURCE_REGISTRATION(0, delegated_counter_name);
+	if(sn_status == SN_ERROR){
+		PRINTF("%s registration error!\n", delegated_counter->resource->url);
+		PROCESS_EXIT();
+	}
+
+	PROXY_RESOURCE_PUT(0, delegated_counter_name, 3600);
 	if(sn_status == SN_ERROR){
 		PRINTF("%s initialization error!\n",delegated_counter->resource->url);
 		PROCESS_EXIT();
@@ -93,11 +118,11 @@ PROCESS_THREAD(sleepy_node, ev, data)
 			delegated_counter->value_len = strlen(delegated_counter->value);
 
 			PRINTF("Submitting the new sensor value\n");
-			PROXY_RESOURCE_PUT(0, delegated_counter, 10);
+			PROXY_RESOURCE_PUT(0, delegated_counter, 20);
 			if(sn_status == SN_EXPIRED){
 				//The programmer chooses to re-send the value
 				PRINTF("resource %s expired; re-initializing\n", delegated_counter->resource->url);
-				PROXY_RESOURCE_PUT(0, delegated_counter, 10);
+				PROXY_RESOURCE_PUT(0, delegated_counter, 20);
 			} else if(sn_status == SN_ERROR){
 				PRINTF("%s resource update error\n", delegated_counter->resource->url);
 			}
