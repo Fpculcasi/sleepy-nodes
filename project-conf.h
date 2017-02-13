@@ -49,3 +49,5 @@
 //#define PROCESS_CONF_NO_PROCESS_NAMES 1
 #define UIP_CONF_TCP 0
 #endif /* PROJECT_ERBIUM_CONF_H_ */
+
+#define LC_CONF_INCLUDE "sys/lc-addrlabels.h"

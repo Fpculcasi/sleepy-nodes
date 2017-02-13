@@ -24,18 +24,9 @@ import org.eclipse.californium.core.server.resources.ResourceAttributes;
 
 public class SNResourceAttributes extends ResourceAttributes {
 
-	public SNResourceAttributes(){
+	public SNResourceAttributes() {
 		super();
 	}
-	
-	// TODO: la funzione che aggiunge gli attributi
-	// la metterei qui, ma magari come metodo statico,
-	// perche' ribaltiamo tutto se mettiamo
-	// attributo.add(Risorsa), cioe' invertiamo le cose
-	// come sono in californium. O forse va bene il
-	// locationResource (cosi' manteniamo lo schema di calfornium),
-	// non lo so...
-	
 
 	/**
 	 * Gets the end point.
@@ -53,22 +44,23 @@ public class SNResourceAttributes extends ResourceAttributes {
 	/**
 	 * Sets the end point.
 	 *
-	 * @param endPoint the end point
+	 * @param endPoint
+	 *            the end point
 	 */
 	public void setEndPoint(String endPoint) {
 		setAttribute(LinkFormat.END_POINT, endPoint);
 	}
-	
+
 	/**
 	 * Generate a string containing the attribute pairs key-value
 	 */
-	public String toString(){
+	public String toString() {
 		String buff = "";
 		Set<String> keys = getAttributeKeySet();
-    	for(String key: keys){
-    		buff += key + "= " + getAttributeValues(key).get(0) + "\n";
-    	}
-    	return buff;
+		for (String key : keys) {
+			buff += key + "= " + getAttributeValues(key).get(0) + "\n";
+		}
+		return buff;
 	}
-	
+
 }
