@@ -1,19 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#define MAX_LINK_FORMAT_RESOURCES 10
-
-struct link_format_resource_t {
-	char* resource_path;
-	char* rtt;
-	char* iff;
-};
-
-struct link_format_t {
-	struct link_format_resource_t resource[MAX_LINK_FORMAT_RESOURCES];
-	uint8_t res_num;
-};
-
 #define DEBUG 1
 #if DEBUG
 	#define PRINTF(...) printf(__VA_ARGS__)
@@ -25,5 +12,4 @@ struct link_format_t {
 	#define PRINTLLADDR(addr)
 #endif	
 
-struct link_format_t* parse_link_format(char* payload);
 void set_global_address(void);
