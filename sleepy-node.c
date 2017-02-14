@@ -194,16 +194,18 @@ coap_packet_t* proxy_registration(uint8_t proxy_index, struct proxy_resource_t* 
 
 /*draft 5.4*/
 coap_packet_t* proxy_update_resource_value(uint8_t proxy_index, struct proxy_resource_t* proxy_resource,
-		uint32_t lifetime){
+		int lifetime){
 	//static coap_packet_t request[1];
 	
 	sprintf(sn_state->uri, "%s/%s", sn_proxy_state[proxy_index].res_location, proxy_resource->resource->url);
-	sprintf(sn_state->query, "lt=%d", lifetime);
 
 	coap_init_message(request, COAP_TYPE_CON, COAP_PUT, 0);
 	
+	if(lifetime>=0){
+		sprintf(sn_state->query, "lt=%d", lifetime);
+		coap_set_header_uri_query(request, sn_state->query);
+	}
 	coap_set_header_uri_path(request, sn_state->uri);
-	coap_set_header_uri_query(request, sn_state->query);
 	coap_set_payload(request, (uint8_t *)proxy_resource->value, proxy_resource->value_len);
 
 	return request;
@@ -222,12 +224,16 @@ coap_packet_t* proxy_get(uint8_t proxy_index, char* proxy_resource_path){
 	return request;
 }
 
-coap_packet_t* proxy_check_updates(uint8_t proxy_index, char* local_path_prefix){
+coap_packet_t* proxy_check_updates(uint8_t proxy_index, char* local_path_prefix, char* query){
 	//static coap_packet_t request[1];
 
 	sprintf(sn_state->uri,"%s/%s", sn_proxy_state[proxy_index].res_location, local_path_prefix);
 	
 	coap_init_message(request, COAP_TYPE_CON, COAP_POST, 0);
+	if(query!=NULL){
+		strcpy(sn_state->query, query);
+		coap_set_header_uri_query(sn_state->query, sn_state->query);
+	}
 
 	coap_set_header_uri_path(request, sn_state->uri);
 

@@ -35,7 +35,7 @@
 #define SN_EXPIRED	2
 
 #define SN_BLOCKING_SEND(pkt_build_function, proxy_index, ...){ \
-	coap_packet_t* send_pkt; \
+	static coap_packet_t* send_pkt; \
 	if(proxy_index >= NUM_PROXIES){ \
 		PRINTF("proxy_index out of bound\n"); \
 		sn_status = SN_ERROR; \
@@ -95,9 +95,9 @@ void receiver_callback(void *response);
 coap_packet_t* proxy_discovery(uint8_t proxy_index);
 coap_packet_t* proxy_registration(uint8_t proxy_index, struct proxy_resource_t* delegated_resource);
 coap_packet_t* proxy_update_resource_value(uint8_t proxy_index, struct proxy_resource_t* proxy_resource,
-		uint32_t lifetime);
+		int lifetime);
 coap_packet_t* proxy_get(uint8_t proxy_index, char* proxy_resource_path);
-coap_packet_t* proxy_check_updates(uint8_t proxy_index, char* local_path_prefix);
+coap_packet_t* proxy_check_updates(uint8_t proxy_index, char* local_path_prefix, char* query);
 
 /* EXTERN VARIABLES DECLARATION*/
 extern struct proxy_state_t sn_proxy_state[];
@@ -148,8 +148,12 @@ extern int sn_status;	//for storing sleepy-node error codes
 	} \
 }
 
-/* initializes or update resource */
-#define PROXY_RESOURCE_PUT(proxy_id, delegated_resource, lifetime){ \
+/* initializes or updates resource without a lifetime */
+#define PROXY_RESOURCE_PUT(proxy_id, delegated_resource) \
+	PROXY_RESOURCE_PUT_LT(proxy_id, delegated_resource, -1)
+
+/* initializes or updates resource */
+#define PROXY_RESOURCE_PUT_LT(proxy_id, delegated_resource, lifetime){ \
 	sn_status = SN_OK; \
 	SN_BLOCKING_SEND(proxy_update_resource_value, proxy_id, delegated_resource, lifetime); \
 	if(sn_state->response->code == CONTENT_2_05 || sn_state->response->code == CHANGED_2_04){ \
@@ -166,9 +170,9 @@ extern int sn_status;	//for storing sleepy-node error codes
 	} \
 }
 
-#define PROXY_ASK_UPDATES(proxy_id, local_path_prefix){ \
+#define PROXY_ASK_UPDATES(proxy_id, local_path_prefix, query){ \
 	sn_status = SN_OK; \
-	SN_BLOCKING_SEND(proxy_check_updates, proxy_id, local_path_prefix); \
+	SN_BLOCKING_SEND(proxy_check_updates, proxy_id, local_path_prefix, query); \
 	if(sn_state->response->code == CHANGED_2_04){ \
 		CHECK_GET_UPDATES(proxy_id, sn_state->response); \
 	} else if(sn_state->response->code == VALID_2_03){ \
