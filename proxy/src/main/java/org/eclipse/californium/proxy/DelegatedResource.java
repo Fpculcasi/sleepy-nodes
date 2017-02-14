@@ -20,6 +20,7 @@ import org.eclipse.californium.core.server.resources.CoapExchange;
 
 import static org.eclipse.californium.core.coap.MediaTypeRegistry.APPLICATION_LINK_FORMAT;
 
+import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -104,9 +105,23 @@ public class DelegatedResource extends ActiveCoapResource {
 	 */
 	@Override
 	public void handleGET(CoapExchange exchange) {
-		if (!isVisible()) { // if not initialized
-			exchange.respond(CoAP.ResponseCode.NOT_FOUND);
+		if (!isVisible()) { 
+			/*
+			 * The resource is active but it has not been initialized yet.
+			 * Thus, depending of whether the request came from the owner of 
+			 * the resource or from another node, the answer will respectively 
+			 * be METHOD_NOT_ALLOWED or NOT_FOUND.
+			 */
+			if (container.getSPIpAddress().equals(exchange.getSourceAddress())){
+				exchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
+			} else {
+				exchange.respond(CoAP.ResponseCode.NOT_FOUND);
+			}
 		} else {
+			/*
+			 * The resource is active and visibile, this it is inizialized. 
+			 * Its state can be returned.
+			 */
 			exchange.respond(CoAP.ResponseCode.CONTENT, value);
 		}
 	}
@@ -216,7 +231,7 @@ public class DelegatedResource extends ActiveCoapResource {
 				 * different from the delegating sleepy node and not notified
 				 * yet to the owner)
 				 */
-				response = Utilities.checkChanges(container);
+				response = Utilities.checkChanges(container, null);
 
 				System.out.println("Here is the list of changes made to '"
 						+ getName() + "' by different endpoints: " + response);
@@ -273,6 +288,20 @@ public class DelegatedResource extends ActiveCoapResource {
 	 */
 	@Override
 	public void handlePOST(CoapExchange exchange) {
+		if (!isVisible()) { 
+			/*
+			 * The resource is active but it has not been initialized yet.
+			 * Thus, depending of whether the request came from the owner of 
+			 * the resource or from another node, the answer will respectively 
+			 * be METHOD_NOT_ALLOWED or NOT_FOUND.
+			 */
+			if (container.getSPIpAddress().equals(exchange.getSourceAddress())){
+				exchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
+			} else {
+				exchange.respond(CoAP.ResponseCode.NOT_FOUND);
+			}
+		}
+		
 		String response = null;
 		ResponseCode code;
 
@@ -280,10 +309,12 @@ public class DelegatedResource extends ActiveCoapResource {
 		if (container.getSPIpAddress().equals(exchange.getSourceAddress())) {
 
 			/*
-			 * get the list of "dirty" resources into the subtree starting from
-			 * the resource "this"
+			 * get the list of "dirty" resources into the subtree which have
+			 * as prefix the URI of "this" resource. In our implementation, this
+			 * means we are considering the resources son of this resource.
 			 */
-			response = Utilities.checkChanges(this);
+			List<String> queries = exchange.getRequestOptions().getUriQuery();
+			response = Utilities.checkChanges(this, queries);
 			if (response != null) {
 				code = ResponseCode.CHANGED;
 			} else {
@@ -301,4 +332,35 @@ public class DelegatedResource extends ActiveCoapResource {
 			exchange.respond(code, response, APPLICATION_LINK_FORMAT);
 		}
 	}
+
+	/**
+	 * Method not implemented, resource deletion is handled by means of lifetime.
+	 * This method has been overridden with the only purpose of returning 
+	 * NOT_FOUND to a regular node issuing a delete request to a resource
+	 * delegated but not initialized yet.
+	 */
+	@Override
+	public void handleDELETE(CoapExchange exchange) {
+		if (!isVisible()) { 
+			/*
+			 * The resource is active but it has not been initialized yet.
+			 * Thus, depending of whether the request came from the owner of 
+			 * the resource or from another node, the answer will respectively 
+			 * be METHOD_NOT_ALLOWED or NOT_FOUND.
+			 */
+			if (container.getSPIpAddress().equals(exchange.getSourceAddress())){
+				exchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
+			} else {
+				exchange.respond(CoAP.ResponseCode.NOT_FOUND);
+			}
+		} else {
+			/*
+			 *  The resource is initialized. This method is not implemented
+			 *  since resource deletion is manager by means of lifetime
+			 */
+			exchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
+		}
+	}
+	
+	
 }

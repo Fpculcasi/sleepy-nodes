@@ -102,7 +102,9 @@ public class ContainerResource extends ActiveCoapResource {
 			 * get the list of "dirty" resources into the subtree starting from
 			 * the resource "this"
 			 */
-			response = Utilities.checkChanges(this);
+			
+			List<String> queries = exchange.getRequestOptions().getUriQuery();
+			response = Utilities.checkChanges(this, queries);
 			if (response != null) {
 				code = ResponseCode.CHANGED;
 			} else {
