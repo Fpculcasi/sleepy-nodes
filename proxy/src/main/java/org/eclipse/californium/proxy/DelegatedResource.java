@@ -92,6 +92,7 @@ public class DelegatedResource extends ActiveCoapResource {
 
 		this.container = container;
 		expired = false;
+		lifetime = -1;
 
 		for (String attr : attributes.getAttributeKeySet()) {
 			getAttributes().addAttribute(attr,
@@ -105,22 +106,23 @@ public class DelegatedResource extends ActiveCoapResource {
 	 */
 	@Override
 	public void handleGET(CoapExchange exchange) {
-		if (!isVisible()) { 
+		if (!isVisible()) {
 			/*
-			 * The resource is active but it has not been initialized yet.
-			 * Thus, depending of whether the request came from the owner of 
-			 * the resource or from another node, the answer will respectively 
-			 * be METHOD_NOT_ALLOWED or NOT_FOUND.
+			 * The resource is active but it has not been initialized yet. Thus,
+			 * depending of whether the request came from the owner of the
+			 * resource or from another node, the answer will respectively be
+			 * METHOD_NOT_ALLOWED or NOT_FOUND.
 			 */
-			if (container.getSPIpAddress().equals(exchange.getSourceAddress())){
+			if (container.getSPIpAddress()
+					.equals(exchange.getSourceAddress())) {
 				exchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
 			} else {
 				exchange.respond(CoAP.ResponseCode.NOT_FOUND);
 			}
 		} else {
 			/*
-			 * The resource is active and visibile, this it is inizialized. 
-			 * Its state can be returned.
+			 * The resource is active and visibile, this it is inizialized. Its
+			 * state can be returned.
 			 */
 			exchange.respond(CoAP.ResponseCode.CONTENT, value);
 		}
@@ -152,18 +154,11 @@ public class DelegatedResource extends ActiveCoapResource {
 			// resource is expired thus it has been removed from the tree
 
 			code = CoAP.ResponseCode.NOT_FOUND;
-			// expired = false; (??)
 
 		} else { // the resource is not expired yet
 
 			// update resource value
 			value = payload;
-
-			System.out.println(
-					"For resource '" + getName() + "' Owner node address is "
-							+ container.getSPIpAddress().getHostAddress()
-							+ ", while requesting node address is "
-							+ exchange.getSourceAddress().getHostAddress());
 
 			if (container.getSPIpAddress()
 					.equals(exchange.getSourceAddress())) {
@@ -171,58 +166,45 @@ public class DelegatedResource extends ActiveCoapResource {
 
 				// get the query attributes from the request
 				String query = exchange.getRequestOptions().getUriQueryString();
+				if (query != null && query.matches("^lt=.*$")) {
+					/*
+					 * if the qeury contains something AND query contains
+					 * lifetime attribute
+					 */
+					long lf = Long.parseLong(query.split("=")[1]);
+					if (lf < 0) {
+						code = CoAP.ResponseCode.BAD_REQUEST;
+						exchange.respond(code);
+						l.unlock();
+						return;
+					}
+					lifetime = lf;
+					System.out.println(
+							getName() + ": New lifetime = " + lifetime);
+				}
 
 				/* timer restart if lifetime is specified */
 				if (timer != null) {
 					// there is a running timer that has to be interrupted
-
 					timer.cancel();
 					timer.purge();
 					currentTimerTask.interrupt();
+					System.out.println(
+							getName() + ": Previous timer interrupted");
 
-					if (query != null && query.matches("^lt=.*$")) {
-						/*
-						 * if the query contains something AND query contains
-						 * lifetime attribute
-						 */
-
-						// update lifetime value
-						lifetime = Long.parseLong(query.split("=")[1]);
-						System.out.println("Timer of '" + getName()
-								+ "' restarted" + " with the new lifetime: "
-								+ lifetime);
-
-					} else {
-						System.out.println("Timer of '" + getName()
-								+ "' restarted"
-								+ " with the previous lifetime: " + lifetime);
-						/*
-						 * else is not needed as the timer is restarted with
-						 * previous lifetime
-						 */
-					}
 					timer = new Timer();
 					currentTimerTask = new ExpiredTimerTask();
 					timer.schedule(currentTimerTask, lifetime * 1000);
+					System.out.println(getName() + ": Timer started ("
+							+ lifetime + "s)");
 
-				} else {
-					// no timers running
-
-					if (query != null && query.matches("^lt=.*$")) {
-						/*
-						 * if the qeury contains something AND query contains
-						 * lifetime attribute start a timer
-						 */
-						lifetime = Long.parseLong(query.split("=")[1]);
+				} else { // no timers running
+					if (lifetime >= 0) { // new lifetime specified
 						timer = new Timer();
 						currentTimerTask = new ExpiredTimerTask();
 						timer.schedule(currentTimerTask, lifetime * 1000);
 
-						System.out.println("New Timer of '" + getName()
-								+ "' started" + " with lifetime: " + lifetime);
-					} else {
-						System.out.println("No timer for '" + getName()
-								+ "' specified" + " in the request");
+						System.out.println(getName() + ": First timer started");
 					}
 				}
 
@@ -233,8 +215,8 @@ public class DelegatedResource extends ActiveCoapResource {
 				 */
 				response = Utilities.checkChanges(container, null);
 
-				System.out.println("Here is the list of changes made to '"
-						+ getName() + "' by different endpoints: " + response);
+				System.out.println("List of changes made to '" + getName()
+						+ "' by different endpoints: " + response);
 
 				if (!isVisible()) { // not initialized yet
 					System.out.println("Resource '" + getName()
@@ -249,21 +231,19 @@ public class DelegatedResource extends ActiveCoapResource {
 							"Resource '" + getName() + "' has been modified");
 					code = CoAP.ResponseCode.CHANGED;
 				}
-			} else {
-				/*
-				 * If the PUT request comes from an end-point different from the
-				 * owner of the resource
-				 */
-
+			} else {/*
+					 * If the PUT request comes from an end-point different from
+					 * the owner of the resource timers is not affected
+					 */
 				if (!isVisible()) {
 					code = CoAP.ResponseCode.NOT_FOUND;
+					value = "";
 				} else {
 					setDirty(true); // set the resource as dirty
 					code = CoAP.ResponseCode.CHANGED;
 				}
 				System.out.println("PUT Request on '" + getName()
-						+ "' from a Regular Node with address "
-						+ ", answered with " + code);
+						+ "' from a Regular Node, answered with " + code);
 			}
 
 			// notify all the observing node the resource has been updated
@@ -288,20 +268,21 @@ public class DelegatedResource extends ActiveCoapResource {
 	 */
 	@Override
 	public void handlePOST(CoapExchange exchange) {
-		if (!isVisible()) { 
+		if (!isVisible()) {
 			/*
-			 * The resource is active but it has not been initialized yet.
-			 * Thus, depending of whether the request came from the owner of 
-			 * the resource or from another node, the answer will respectively 
-			 * be METHOD_NOT_ALLOWED or NOT_FOUND.
+			 * The resource is active but it has not been initialized yet. Thus,
+			 * depending of whether the request came from the owner of the
+			 * resource or from another node, the answer will respectively be
+			 * METHOD_NOT_ALLOWED or NOT_FOUND.
 			 */
-			if (container.getSPIpAddress().equals(exchange.getSourceAddress())){
+			if (container.getSPIpAddress()
+					.equals(exchange.getSourceAddress())) {
 				exchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
 			} else {
 				exchange.respond(CoAP.ResponseCode.NOT_FOUND);
 			}
 		}
-		
+
 		String response = null;
 		ResponseCode code;
 
@@ -309,8 +290,8 @@ public class DelegatedResource extends ActiveCoapResource {
 		if (container.getSPIpAddress().equals(exchange.getSourceAddress())) {
 
 			/*
-			 * get the list of "dirty" resources into the subtree which have
-			 * as prefix the URI of "this" resource. In our implementation, this
+			 * get the list of "dirty" resources into the subtree which have as
+			 * prefix the URI of "this" resource. In our implementation, this
 			 * means we are considering the resources son of this resource.
 			 */
 			List<String> queries = exchange.getRequestOptions().getUriQuery();
@@ -334,33 +315,33 @@ public class DelegatedResource extends ActiveCoapResource {
 	}
 
 	/**
-	 * Method not implemented, resource deletion is handled by means of lifetime.
-	 * This method has been overridden with the only purpose of returning 
-	 * NOT_FOUND to a regular node issuing a delete request to a resource
-	 * delegated but not initialized yet.
+	 * Method not implemented, resource deletion is handled by means of
+	 * lifetime. This method has been overridden with the only purpose of
+	 * returning NOT_FOUND to a regular node issuing a delete request to a
+	 * resource delegated but not initialized yet.
 	 */
 	@Override
 	public void handleDELETE(CoapExchange exchange) {
-		if (!isVisible()) { 
+		if (!isVisible()) {
 			/*
-			 * The resource is active but it has not been initialized yet.
-			 * Thus, depending of whether the request came from the owner of 
-			 * the resource or from another node, the answer will respectively 
-			 * be METHOD_NOT_ALLOWED or NOT_FOUND.
+			 * The resource is active but it has not been initialized yet. Thus,
+			 * depending of whether the request came from the owner of the
+			 * resource or from another node, the answer will respectively be
+			 * METHOD_NOT_ALLOWED or NOT_FOUND.
 			 */
-			if (container.getSPIpAddress().equals(exchange.getSourceAddress())){
+			if (container.getSPIpAddress()
+					.equals(exchange.getSourceAddress())) {
 				exchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
 			} else {
 				exchange.respond(CoAP.ResponseCode.NOT_FOUND);
 			}
 		} else {
 			/*
-			 *  The resource is initialized. This method is not implemented
-			 *  since resource deletion is manager by means of lifetime
+			 * The resource is initialized. This method is not implemented since
+			 * resource deletion is manager by means of lifetime
 			 */
 			exchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
 		}
 	}
-	
-	
+
 }

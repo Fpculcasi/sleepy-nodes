@@ -219,6 +219,18 @@ public class CoapTreeBuilder {
 		return newResource;
 	}
 
+	/**
+	 * Remove a resource from the tree and check recursively for parents to
+	 * remove. This method checks for a correct invocation, i.e. the parameter
+	 * child must be different either from a null resource and the root resource
+	 * (ContainerResource). Then check if child is and internal resource, and if
+	 * it has any children in order to decide to:
+	 *  - remove it or to set it as non active (based on getChildren.isEmpty());
+	 *  - remove also the parent (if child has been removed).
+	 * 
+	 * @param child
+	 *            The resource to remove
+	 */
 	public synchronized void remove(ActiveCoapResource child) {
 		if (child == null) {
 			return;
@@ -268,9 +280,8 @@ public class CoapTreeBuilder {
 				 * Then, we have to remove this resource from his parent and
 				 * replace it with the newly created resource.
 				 */
-				boolean visibility =
-						(defaultVisibility == VisibilityPolicy.ALL_VISIBLE)?
-						true : false;
+				boolean visibility = (defaultVisibility == VisibilityPolicy.ALL_VISIBLE)
+						? true : false;
 
 				ActiveCoapResource newInternalResource = new ActiveCoapResource(
 						child.getName(), false, visibility);
