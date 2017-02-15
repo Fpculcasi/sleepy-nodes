@@ -1,10 +1,13 @@
 /**
 	* \file
-	*		Delegate resource test
+	*	Delegate resource test. 
+	*	This is the user main process for the sleepy-node. It delegates
+	*	some resources that should cover most of the use-cases of
+	*	the sleepy-node operation.
 	* \authors
-	*		Francesco Paolo Culcasi	<fpculcasi@gmail.com>
-	*		Alessandro Martinelli	<a.martinelli1990@gmail.com>
-	*		Nicola Messina		<nicola.messina93@gmail.com>
+	*	Francesco Paolo Culcasi	<fpculcasi@gmail.com> <br>
+	*	Alessandro Martinelli	<a.martinelli1990@gmail.com> <br>
+	*	Nicola Messina		<nicola.messina93@gmail.com> <br>
 	*/
 
 #include <stdio.h>
@@ -61,10 +64,10 @@ char res_counter_incr_value[RES_BUFFER_SIZE] = "1";
 char res_button_value[RES_BUFFER_SIZE] = "OFF";
 char res_name_value[RES_BUFFER_SIZE];
 
-struct proxy_resource_t *delegated_counter;
-struct proxy_resource_t *delegated_counter_increment;
-struct proxy_resource_t *delegated_name;
-struct proxy_resource_t *delegated_button;
+struct sleepy_node_resource_t *delegated_counter;
+struct sleepy_node_resource_t *delegated_counter_increment;
+struct sleepy_node_resource_t *delegated_name;
+struct sleepy_node_resource_t *delegated_button;
 static struct etimer et;
 
 int counter = 0;
@@ -87,13 +90,13 @@ PROCESS_THREAD(sleepy_node, ev, data)
 	/*initialize proxies ip addresses and resources*/
 	ADD_PROXY(0, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x1);
 
-	delegated_counter = initialize_proxy_resource(&res_counter, 
+	delegated_counter = initialize_sleepy_node_resource(&res_counter, 
 		res_counter_value, strlen(res_counter_value)+1);
-	delegated_name = initialize_proxy_resource(&res_dev_name, 
+	delegated_name = initialize_sleepy_node_resource(&res_dev_name, 
 		res_name_value, 0);
-	delegated_counter_increment = initialize_proxy_resource(&res_counter_incr, 
+	delegated_counter_increment = initialize_sleepy_node_resource(&res_counter_incr, 
 		res_counter_incr_value, strlen(res_counter_incr_value)+1);
-	delegated_button = initialize_proxy_resource(&res_button, 
+	delegated_button = initialize_sleepy_node_resource(&res_button, 
 		res_button_value, strlen(res_button_value));
 	
 	/*sets the id of this endpoint using MAC layer address*/
@@ -179,7 +182,7 @@ PROCESS_THREAD(sleepy_node, ev, data)
 			}
 			
 			PROXY_RESOURCE_PUT(0, delegated_button);
-			if(sn_status = SN_EXPIRED){
+			if(sn_status == SN_EXPIRED){
 				//we decided to re-send the button value
 				PRINTF("resource %s expired; re-initializing\n", delegated_button->resource->url);
 				PROXY_RESOURCE_PUT(0, delegated_button);

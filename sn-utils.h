@@ -1,3 +1,13 @@
+/**
+	* \file
+	*	Sleepy node utility functions interface.
+	*	
+	* \authors
+	*	Francesco Paolo Culcasi	<fpculcasi@gmail.com> <br>
+	*	Alessandro Martinelli	<a.martinelli1990@gmail.com> <br>
+	*	Nicola Messina		<nicola.messina93@gmail.com> <br>
+	*/
+
 #include <stdio.h>
 #include <stdint.h>
 
