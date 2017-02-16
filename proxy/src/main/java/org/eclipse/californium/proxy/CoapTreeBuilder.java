@@ -20,25 +20,94 @@ import org.eclipse.californium.core.coap.CoAP;
 import org.eclipse.californium.core.server.resources.CoapExchange;
 import org.eclipse.californium.core.server.resources.Resource;
 
+/**
+ * CoapTreeBuilder is a helper class for handling a subtree of
+ * {@link ActiveCoapResource}. It's useful when dealing with resources having
+ * path-like names. Every CoapTreeBuilder has an associated root and 
+ * an associated visibility policy.
+ * <p>
+ * An user willing to create an ActiveCoapResource with a path-like name, like
+ * "/a/b/c" and make it reachable from the outside is supposed to do the
+ * following:<br>
+ * - to create a CoapTreeBuilder, with the the intended root and
+ * visibility,<br>
+ * - to create the ActiveCoapResource (the name will be overridden,<br>
+ * - to call the <tt>add()</tt> method on the CoapTreeBuilder instance,
+ * specifying the new resource and its complete name.<br>
+ * The <tt>add()</tt> method will create an ActiveCoapResource "a" as child of
+ * the CoapTreeBuilder root, an ActiveCoapResource "b" as child of a, will
+ * assign the name of "c" to the ActiveCoapResource passed as argument and will
+ * adds it as child of b.
+ * <p>
+ * If the visibility_policy ALL_INVISIBLE is used, ActiveCoapResource 'a' and
+ * 'b' in the example are not visible from the outside (unless the
+ * <tt>handleRequest()</tt> method of ActiveCoapResource is overridden), so they
+ * are like "internal" resource: they are created with the only purpose of
+ * making possible to reach 'c' from the outside. The nice thing is that from
+ * the outside it will appear as if only one resource exists: the resource
+ * "/a/b/c".<br>
+ * ALL_VISIBLE visibility policy is useful for debugging purpose, but we do not
+ * exclude some user could find it useful.
+ * <p>
+ * A <tt>remove()</tt> method is provided, which take care of deleting the
+ * request resource and all the parent of that resource that are no more
+ * necessary (if any).
+ * <p>
+ * The CoapTreeBuilder root is built outside the CoapTreeBiulder, and outside
+ * the CoapTreeBuilder must be deleted.
+ *
+ */
 public class CoapTreeBuilder {
 
-	protected ActiveCoapResource root;
+	// The root of the CoapTreeBuilder
+	private ActiveCoapResource root;
 
-	// defaultVisibility is the visibility applied to a deleted/de-registered
-	// (by life-time expiration) resource
+	/*
+	 * ActiveCoapResource automatically created inside the CoapTreeBuilder are
+	 * provided with this visibility. This may happen both during <tt>add()</tt>
+	 * (if the user do now explicitly specifies another policy)
+	 * and <tt>delete()</tt> (for example, given the tree a/b/c, 
+	 * with a root and b,c resources explicitly created by the user, 
+	 * if a delete(b) is issued, b cannot be simply removed, since c 
+	 * would become unreachable, thus an ActiveCoapResource "b" 
+	 * has to be automatically created).
+	 */
 	private VisibilityPolicy defaultVisibility;
 
+	/**
+	 * Creates a CoapTreeBuilder with the given root and visibility policy.
+	 * 
+	 * @param root
+	 * 			the root of the CoapTreeBuilder
+	 * @param visibility
+	 * 			the visibility policy to be used in case of automatic creation
+	 * 			of ActiveCoapResources
+	 */
 	public CoapTreeBuilder(ActiveCoapResource root,
 			VisibilityPolicy visibility) {
 		this.root = root;
 		this.defaultVisibility = visibility;
 	}
 
+	/**
+	 * Return the visibility policy associated with the CoapTreeBuilder instance
+	 * 
+	 * @return
+	 * 		the visibility policy associated with the CoapTreeBuilder instance
+	 */
 	public VisibilityPolicy getVisibility() {
 		return defaultVisibility;
 	}
 
-	protected class InfoPath {
+	/*
+	 * InfoPath is a class used internally in the add method in order to
+	 * simplify the handling of the path. The add method scan one piece of
+	 * the path at a time, and at each iteration consider only a single
+	 * piece, thus this class store the remainingPath, the piece of path
+	 * being currently examined, and offers method to 'remove' the first piece
+	 * of the path from the remaining path and making it the 'current' one.
+	 */
+	private class InfoPath {
 		// Path that will be traversed
 		String remainingPath;
 		// resourceName is going to store, iteration after iteration,
@@ -79,9 +148,12 @@ public class CoapTreeBuilder {
 		}
 	}
 
+	/*
+	 * Method that check the correctness of the parameter.
+	 * In case problems are detected 'false' is returned.
+	 */
 	private boolean parametersAreValid(String path) {
-		// Method that check the correctness of the parameter. In
-		// case of problem, false must be returned
+
 		if (path.matches("^./*$")) {
 			return false;
 		}
@@ -89,28 +161,48 @@ public class CoapTreeBuilder {
 	}
 
 	/**
-	 * Builds a subtree of resources from the given path, basing on the given
-	 * VisibilityPolicy, and adds it as child of the given root. The last part
-	 * of the path is not added instead, and it is left to the user to create a
-	 * last resource, using the name (i.e. the last name contained in the path)
-	 * returned by subtreeBuilder, and to adds it as child of the resource
-	 * returned by subtreeBuilder, i.e. the resource representing the
-	 * penultimate part of the path.
+	 * Builds a subtree of resources resembling the given path, with the passed 
+	 * newResource as last resource of this path, using the CoapTreeBuilder
+	 * VisibilityPolicy, and adds it as child of the root. The resource
+	 * representing the final piece of the path must be built by the user and
+	 * passed as argument to this function, that will take care of adding it
+	 * as child of the resource representing the penultimate piece of the path.
 	 * 
 	 * @param path
-	 *            The path containing the name of the resources to be created or
-	 *            traversed.
+	 *            The path containing the name of the resources to be created or,
+	 *            if already existing, traversed.
 	 * @param root
 	 *            The resource starting from which the subtree will be built. If
 	 *            you would like the subtree to start from the root of the
-	 *            CoapResver, use
+	 *            CoapServer, use
+	 *            org.eclipse.californium.core.CoapServer.getRoot() as root.
+	 */
+	public boolean add(ActiveCoapResource newResource, String path) {
+		return add(newResource, path, defaultVisibility);
+	}
+	
+	/**
+	 * Builds a subtree of resources resembling the given path, with the passed 
+	 * newResource as last resource of this path, using the given
+	 * VisibilityPolicy, and adds it as child of the root. The resource
+	 * representing the final piece of the path must be built by the user and
+	 * passed as argument to this function, that will take care of adding it
+	 * as child of the resource representing the penultimate piece of the path.
+	 * 
+	 * @param path
+	 *            The path containing the name of the resources to be created or,
+	 *            if already existing, traversed.
+	 * @param root
+	 *            The resource starting from which the subtree will be built. If
+	 *            you would like the subtree to start from the root of the
+	 *            CoapServer, use
 	 *            org.eclipse.californium.core.CoapServer.getRoot() as root.
 	 * @param vPolicy
 	 *            The visibility policy. Possible values are:
 	 *            VisibilityPolicy.ALL_VISIBLE or
 	 *            VisibilityPolicy.ALL_INVISIBLE. If a CoapResource has to be
 	 *            created, it will be created with the visibility specified by
-	 *            the policy.
+	 *            this policy.
 	 * @return true in case of correct creation, false otherwise.
 	 */
 	public synchronized boolean add(ActiveCoapResource newResource, String path,
@@ -171,12 +263,8 @@ public class CoapTreeBuilder {
 		}
 	}
 
-	/* If not specified, visibility is set to the default value for the tree */
-	public boolean add(ActiveCoapResource newResource, String path) {
-		return add(newResource, path, defaultVisibility);
-	}
-
-	protected void handleExistingResource(CoapResource child,
+	// Handle already existing resources along the path
+	private void handleExistingResource(CoapResource child,
 			VisibilityPolicy vPolicy) {
 		System.out.println("traversing intermediate resource" + " "
 				+ child.getName() + ", visibility " + child.isVisible()
@@ -194,7 +282,8 @@ public class CoapTreeBuilder {
 		}
 	}
 
-	protected ActiveCoapResource handleResourceCreation(String resourceName,
+	// Handle the creation of new ActiveCoapResources along the path
+	private ActiveCoapResource handleResourceCreation(String resourceName,
 			Resource father, VisibilityPolicy vPolicy) {
 		// newResource is used to store the newly created resource
 		ActiveCoapResource newResource = null;
@@ -220,21 +309,22 @@ public class CoapTreeBuilder {
 	}
 
 	/**
-	 * Remove a resource from the tree and check recursively for parents to
-	 * remove. This method checks for a correct invocation, i.e. the parameter
-	 * child must be different either from a null resource and the root resource
-	 * (ContainerResource). Then check if child is and internal resource, and if
-	 * it has any children in order to decide to:
-	 *  - remove it or to set it as non active (based on getChildren.isEmpty());
-	 *  - remove also the parent (if child has been removed).
+	 * The remove method removes the passed child if possible.
+	 * If the resource has some child, it is not deleted (if internal) or is
+	 * deleted and replaced with an internal resource (if active).
+	 * If the passed resource is deleted, and if his its parent is nor an
+	 * active resource nor the root of the tree, the method is recursively 
+	 * called on the father resource.
 	 * 
 	 * @param child
-	 *            The resource to remove
+	 *            The resource to be removed
 	 */
 	public synchronized void remove(ActiveCoapResource child) {
 		if (child == null) {
 			return;
 		}
+		// The root is created outside the CoapTreeBuilder, and outside
+		// the CoapTreeBuilder must be deleted
 		if (child.equals(root)) {
 			return;
 		}
@@ -246,7 +336,7 @@ public class CoapTreeBuilder {
 			if (child.getChildren().isEmpty()) {
 				/*
 				 * If the resource is an internal resource and it has no child,
-				 * it has to be removed
+				 * thus it can to be removed
 				 */
 				parent.delete(child);
 				if (parent.isActive() == false) {
