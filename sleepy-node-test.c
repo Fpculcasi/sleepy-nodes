@@ -72,6 +72,7 @@ static struct etimer et;
 
 int counter = 0;
 int button_on = 0;
+struct proxy_state_t* proxy;
 
 PROCESS_THREAD(sleepy_node, ev, data)
 {
@@ -88,7 +89,9 @@ PROCESS_THREAD(sleepy_node, ev, data)
 
 
 	/*initialize proxies ip addresses and resources*/
-	ADD_PROXY(0, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x1);
+	uip_ipaddr_t proxy_addr;
+	uip_ip6addr(&proxy_addr, 0xaaaa, 0, 0, 0, 0, 0, 0, 0x1);
+	proxy = add_proxy(&proxy_addr);
 
 	delegated_counter = initialize_sleepy_node_resource(&res_counter, 
 		res_counter_value, strlen(res_counter_value)+1);
@@ -103,26 +106,26 @@ PROCESS_THREAD(sleepy_node, ev, data)
 	set_ep_id();
 
 	/*Send discovery*/
-	PROXY_DISCOVERY(0);
+	PROXY_DISCOVERY(proxy);
 	if(sn_status == SN_ERROR){
 		PRINTF("Discovery error!\n");
 		PROCESS_EXIT();
 	}
 
 	/*counter registration*/
-	PROXY_RESOURCE_REGISTRATION(0, delegated_counter);
+	PROXY_RESOURCE_REGISTRATION(proxy, delegated_counter);
 
 	/*counter increment registration and initialization (no lifetime)*/
-	PROXY_RESOURCE_REGISTRATION(0, delegated_counter_increment);
-	PROXY_RESOURCE_PUT(0, delegated_counter_increment);
+	PROXY_RESOURCE_REGISTRATION(proxy, delegated_counter_increment);
+	PROXY_RESOURCE_PUT(proxy, delegated_counter_increment);
 
 	/*device name registration and initialization (no lifetime)*/
-	PROXY_RESOURCE_REGISTRATION(0, delegated_name);
-	PROXY_RESOURCE_PUT(0, delegated_name);
+	PROXY_RESOURCE_REGISTRATION(proxy, delegated_name);
+	PROXY_RESOURCE_PUT(proxy, delegated_name);
 
 	/*button device registration and initialization*/
-	PROXY_RESOURCE_REGISTRATION(0, delegated_button);
-	PROXY_RESOURCE_PUT_LT(0, delegated_button, 100);
+	PROXY_RESOURCE_REGISTRATION(proxy, delegated_button);
+	PROXY_RESOURCE_PUT_LT(proxy, delegated_button, 100);
 
 	etimer_set(&et, AWAKE_INTERVAL * CLOCK_SECOND);
 
@@ -133,7 +136,7 @@ PROCESS_THREAD(sleepy_node, ev, data)
 			//NETSTACK_MAC.on();
 
 			PRINTF("Checking for updates...\n");
-			PROXY_ASK_UPDATES(0, "", NULL);
+			PROXY_ASK_UPDATES(proxy, "", NULL);
 			if(sn_status == SN_ERROR){
 				PRINTF("Error checking updates for this sleepy node\n");
 			}
@@ -153,11 +156,11 @@ PROCESS_THREAD(sleepy_node, ev, data)
 			delegated_counter->value_len = strlen(delegated_counter->value);
 
 			PRINTF("Submitting the new counter value\n");
-			PROXY_RESOURCE_PUT_LT(0, delegated_counter, 50);
+			PROXY_RESOURCE_PUT_LT(proxy, delegated_counter, 50);
 			if(sn_status == SN_EXPIRED){
 				//we decided to re-send the counter value
 				PRINTF("resource %s expired; re-initializing\n", delegated_counter->resource->url);
-				PROXY_RESOURCE_PUT_LT(0, delegated_counter, 50);
+				PROXY_RESOURCE_PUT_LT(proxy, delegated_counter, 50);
 			} else if(sn_status == SN_ERROR){
 				PRINTF("%s resource update error\n", delegated_counter->resource->url);
 			}
@@ -181,11 +184,11 @@ PROCESS_THREAD(sleepy_node, ev, data)
 				delegated_button->value_len = strlen(delegated_button->value);
 			}
 			
-			PROXY_RESOURCE_PUT(0, delegated_button);
+			PROXY_RESOURCE_PUT(proxy, delegated_button);
 			if(sn_status == SN_EXPIRED){
 				//we decided to re-send the button value
 				PRINTF("resource %s expired; re-initializing\n", delegated_button->resource->url);
-				PROXY_RESOURCE_PUT(0, delegated_button);
+				PROXY_RESOURCE_PUT(proxy, delegated_button);
 			} else if(sn_status == SN_ERROR){
 				PRINTF("%s resource update error\n", delegated_button->resource->url);
 			}

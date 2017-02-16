@@ -24,9 +24,29 @@
 const char* well_known = ".well-known/core";
 struct sn_state_t s;
 
-struct proxy_state_t sn_proxy_state[NUM_PROXIES];
 struct sn_state_t *sn_state = &s;
 int sn_status = SN_OK;
+MEMB(sn_proxies, struct proxy_state_t, NUM_PROXIES);
+
+/**
+ * Adds a proxy to the sleepy-node system having the specified
+ * ipv6 address.
+ * 
+ * @param proxy_ip
+ *	the ipv6 address of the proxy
+ * @return a pointer to a proxy_state_t struct that is used
+ * 	as handler for this proxy
+*/
+struct proxy_state_t* add_proxy(uip_ipaddr_t* proxy_ip){
+	struct proxy_state_t* p = memb_alloc(&sn_proxies);
+	if(p == NULL){
+		return NULL;
+	}
+	p->proxy_ip = *proxy_ip;
+	memset(p->base_path, 0, sizeof(p->base_path));
+	memset(p->res_location, 0, sizeof(p->res_location));
+	return p;
+}
 
 /**
 * Parses a link-format string, usually a payload of a CoAP packet whose
@@ -95,20 +115,16 @@ void receiver_callback(void *response){
 * 
 * @param pkt:
 *	the response packet from the proxy
-* @param proxy_index:
-	the index of the proxy whose state has to be changed
+* @param proxy_handler:
+	the handler of the proxy whose state has to be changed
 */
-void get_proxy_base_path(coap_packet_t* pkt, uint8_t proxy_index){
+void get_proxy_base_path(coap_packet_t* pkt, struct proxy_state_t* proxy_handler){
 	const uint8_t* payload;
 	struct link_format_t* lf;
-	if(proxy_index >= NUM_PROXIES){
-		PRINTF("proxy_index out of bound\n");
-		return;
-	}
 	coap_get_payload(pkt, &payload);
 	//i am supposing the payload is a c-string
 	lf = parse_link_format((char*)payload);
-	strcpy(sn_proxy_state[proxy_index].base_path,lf->resource[0].resource_path);
+	strcpy(proxy_handler->base_path,lf->resource[0].resource_path);
 }
 
 /**
@@ -117,25 +133,18 @@ void get_proxy_base_path(coap_packet_t* pkt, uint8_t proxy_index){
 *
 * @param pkt:
 *	the response packet from the proxy
-* @param proxy_index:
-	the index of the proxy whose state has to be changed
+* @param proxy_handler:
+	the handler of the proxy whose state has to be changed
 */
-void get_proxy_resource_location(coap_packet_t* pkt, uint8_t proxy_index){
+void get_proxy_resource_location(coap_packet_t* pkt, struct proxy_state_t* proxy_handler){
 	const char* tmp;
-	int len;
-
-	if(proxy_index >= NUM_PROXIES){
-		PRINTF("proxy_index out of bound\n");
-		return;
-	}
-	
-	len = coap_get_header_location_path(pkt,&tmp);
-	memcpy(&(sn_proxy_state[proxy_index].res_location[1]), tmp, len);
+	int len = coap_get_header_location_path(pkt,&tmp);
+	memcpy(&(proxy_handler->res_location[1]), tmp, len);
 
 	//add a heading '/'
-	sn_proxy_state[proxy_index].res_location[0] = '/';
+	proxy_handler->res_location[0] = '/';
 	//turn the received location into a string
-	sn_proxy_state[proxy_index].res_location[len+1] = '\0';
+	proxy_handler->res_location[len+1] = '\0';
 	
 	//PRINTF("### %s", tmp);
 }
@@ -149,10 +158,10 @@ void get_proxy_resource_location(coap_packet_t* pkt, uint8_t proxy_index){
 *	the response packet from the proxy
 * @param remote_resource_path:
 *	the proxy URI of the delegated resource to retrieve 
-* @param proxy_index:
-	the index of the proxy containing the resource to retrieve
+* @param proxy_handler:
+	the handler of the proxy containing the resource to retrieve
 */
-void get_proxy_resource_value(coap_packet_t* pkt, char* remote_resource_path, uint8_t proxy_index){
+void get_proxy_resource_value(coap_packet_t* pkt, char* remote_resource_path, struct proxy_state_t* proxy_handler){
 	const uint8_t* payload;
 	int len = coap_get_payload(pkt, &payload);
 
@@ -163,7 +172,7 @@ void get_proxy_resource_value(coap_packet_t* pkt, char* remote_resource_path, ui
 	*  the resource uri has no '/' in front of it 
 	*/
 	char* local_resource_path = remote_resource_path + 
-		strlen(sn_proxy_state[proxy_index].res_location) + 1;
+		strlen(proxy_handler->res_location) + 1;
 	PRINTF("GET returned for resource %s (local is %s)\n",remote_resource_path,local_resource_path);
 
 	struct sleepy_node_resource_t* res = search_sleepy_node_resource_by_path(local_resource_path);
@@ -196,11 +205,11 @@ coap_packet_t request[1];
 * Constructs the proxy request corresponding to a discovery operation
 * (draft 5.1).
 *
-* @param proxy_index:
-*	the index of the proxy to discover
+* @param proxy_handler:
+*	the handler of the proxy to discover
 * @return the CoAP packet to send to the proxy
 */
-coap_packet_t* proxy_discovery(uint8_t proxy_index){
+coap_packet_t* proxy_discovery(struct proxy_state_t* proxy_handler){
 	//static coap_packet_t request[1];
 
 	coap_init_message(request, COAP_TYPE_CON, COAP_GET, 0);
@@ -215,13 +224,13 @@ coap_packet_t* proxy_discovery(uint8_t proxy_index){
 * for a given sleepy-proxy resource that has to be delegated
 * (draft 5.2).
 *
-* @param proxy_index:
-*	the index of the proxy where the resource has to be registered
+* @param proxy_handler:
+*	the handler of the proxy where the resource has to be registered
 * @param delegated_resource:
 *	pointer to the sleepy-node resource that has to be registered
 * @return the CoAP packet to send to the proxy
 */
-coap_packet_t* proxy_registration(uint8_t proxy_index, struct sleepy_node_resource_t* delegated_resource){
+coap_packet_t* proxy_registration(struct proxy_state_t* proxy_handler, struct sleepy_node_resource_t* delegated_resource){
 	//static coap_packet_t request[1];
 	struct link_format_t* lf;
 	char* delegated_rt;
@@ -239,7 +248,7 @@ coap_packet_t* proxy_registration(uint8_t proxy_index, struct sleepy_node_resour
 
 	coap_init_message(request, COAP_TYPE_CON, COAP_POST, 0);
 	
-	coap_set_header_uri_path(request, sn_proxy_state[proxy_index].base_path);
+	coap_set_header_uri_path(request, proxy_handler->base_path);
 	coap_set_header_uri_query(request, sn_state->query);
 	coap_set_payload(request, (uint8_t *)sn_state->payload, strlen(sn_state->payload)+1);
 
@@ -250,18 +259,18 @@ coap_packet_t* proxy_registration(uint8_t proxy_index, struct sleepy_node_resour
 * Constructs a proxy request to initialize an already delegated resource
 * (draft 5.4).
 *
-* @param proxy_index:
-*	the index of the proxy where the resource has been registered
+* @param proxy_handler:
+*	the handler of the proxy where the resource has been registered
 * @param proxy_resource:
 *	pointer to the sleepy-node resource whose value must be updated
 *	on the proxy
 * @return the CoAP packet to send to the proxy
 */
-coap_packet_t* proxy_update_resource_value(uint8_t proxy_index, struct sleepy_node_resource_t* proxy_resource,
+coap_packet_t* proxy_update_resource_value(struct proxy_state_t* proxy_handler, struct sleepy_node_resource_t* proxy_resource,
 		int lifetime){
 	//static coap_packet_t request[1];
 	
-	sprintf(sn_state->uri, "%s/%s", sn_proxy_state[proxy_index].res_location, proxy_resource->resource->url);
+	sprintf(sn_state->uri, "%s/%s", proxy_handler->res_location, proxy_resource->resource->url);
 
 	coap_init_message(request, COAP_TYPE_CON, COAP_PUT, 0);
 	
@@ -279,20 +288,18 @@ coap_packet_t* proxy_update_resource_value(uint8_t proxy_index, struct sleepy_no
 * Constructs a proxy request to ask the proxy the value for
 * a particular resource (draft 5.6).
 *
-* @param proxy_index:
-*	the index of the proxy where the resource is located
+* @param proxy_handler:
+*	the handler of the proxy where the resource is located
 * @param proxy_resource_path:
 *	URI of the proxy resource whose value must be retrieved
 * @return the CoAP packet to send to the proxy
 */
-coap_packet_t* proxy_get(uint8_t proxy_index, char* proxy_resource_path){
+coap_packet_t* proxy_get(struct proxy_state_t* proxy_handler, char* proxy_resource_path){
 	//static coap_packet_t request[1];
 
 	strcpy(sn_state->uri,proxy_resource_path);
 
 	coap_init_message(request, COAP_TYPE_CON, COAP_GET, 0);
-
-	//sprintf(state->uri, "%s/%s", sn_proxy_state[proxy_index].res_location, delegated_resource->url);
 	coap_set_header_uri_path(request, sn_state->uri);
 	
 	return request;
@@ -302,8 +309,8 @@ coap_packet_t* proxy_get(uint8_t proxy_index, char* proxy_resource_path){
 * Constructs a proxy request to ask the proxy the updates for
 * an already delegated resource (draft 5.6).
 *
-* @param proxy_index:
-*	the index of the proxy where the resource has been registered
+* @param proxy_handler:
+*	the handler of the proxy where the resource has been registered
 * @param local_path_prefix:
 *	URI prefix for the resources to be retrieved
 * @param query:
@@ -311,10 +318,10 @@ coap_packet_t* proxy_get(uint8_t proxy_index, char* proxy_resource_path){
 * @return the CoAP packet to send to the proxy
 */
 
-coap_packet_t* proxy_check_updates(uint8_t proxy_index, char* local_path_prefix, char* query){
+coap_packet_t* proxy_check_updates(struct proxy_state_t* proxy_handler, char* local_path_prefix, char* query){
 	//static coap_packet_t request[1];
 
-	sprintf(sn_state->uri,"%s/%s", sn_proxy_state[proxy_index].res_location, local_path_prefix);
+	sprintf(sn_state->uri,"%s/%s", proxy_handler->res_location, local_path_prefix);
 	
 	coap_init_message(request, COAP_TYPE_CON, COAP_POST, 0);
 	if(query!=NULL){
