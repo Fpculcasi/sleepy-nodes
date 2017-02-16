@@ -31,18 +31,17 @@ import org.eclipse.californium.core.server.resources.Resource;
  * - to create the ActiveCoapResource (the name will be overridden,<br>
  * - to call the <tt>add()</tt> method on the CoapTreeBuilder instance,
  * specifying the new resource and its complete name.<br>
- * The <tt>add()</tt> method will create an ActiveCoapResource "a" as child of
- * the CoapTreeBuilder root, an ActiveCoapResource "b" as child of a, will
- * assign the name of "c" to the ActiveCoapResource passed as argument and will
- * adds it as child of b.
+ * The <tt>add()</tt> method will create an inactive internal ActiveCoapResource
+ * "a" as child of the CoapTreeBuilder root, an inactive internal
+ * ActiveCoapResource "b" as child of a, will assign the name of "c" to the 
+ * ActiveCoapResource passed as argument and will adds it as child of b.
  * <p>
  * If the visibility_policy ALL_INVISIBLE is used, ActiveCoapResource 'a' and
- * 'b' in the example are not visible from the outside (unless the
- * <tt>handleRequest()</tt> method of ActiveCoapResource is overridden), so they
- * are like "internal" resource: they are created with the only purpose of
- * making possible to reach 'c' from the outside. The nice thing is that from
- * the outside it will appear as if only one resource exists: the resource
- * "/a/b/c".<br>
+ * 'b' in the example are not visible from the outside (they are not showed in
+ * .well-known/core thanks to visibility = false, while it is not possible
+ * to issue any request on them since they are inactive resource.
+ *  The nice thing is that from the outside it will appear as if only 
+ *  one resource exists: the external resource /a/b/c".<br>
  * ALL_VISIBLE visibility policy is useful for debugging purpose, but we do not
  * exclude some user could find it useful.
  * <p>
@@ -217,6 +216,9 @@ public class CoapTreeBuilder {
 		InfoPath iPath = new InfoPath(path);
 		while (true) {
 			iPath.removeFirst();
+			System.out.println("[CoapTreeBuilder.add]: "
+					+ "current is " + iPath.current 
+					+ ", remainingPath is " + iPath.remainingPath);
 			if (iPath.pathParsingFinished()) {
 				// The user, during newResource creation, should have
 				// set all its fields, like visibility, so the only
@@ -301,8 +303,8 @@ public class CoapTreeBuilder {
 
 	/**
 	 * The remove method removes the passed child if possible. If the resource
-	 * has some child, it is not deleted (if internal) or is deleted and
-	 * replaced with an internal resource (if active). If the passed resource is
+	 * has some child, it is not deleted (if inactive) or is deleted and
+	 * replaced with an inactive resource (if active). If the passed resource is
 	 * deleted, and if his its parent is nor an active resource nor the root of
 	 * the tree, the method is recursively called on the father resource.
 	 * 
@@ -319,24 +321,37 @@ public class CoapTreeBuilder {
 			return;
 		}
 
-		ActiveCoapResource parent = (ActiveCoapResource) child.getParent();
+		Resource parent = child.getParent();
+		ActiveCoapResource activeParent;
 
 		if (!child.isActive()) {
-			// The resource is an internal resource
+			// The resource is an inactive resource
 			if (child.getChildren().isEmpty()) {
 				/*
-				 * If the resource is an internal resource and it has no child,
+				 * If the resource is an inactive resource and it has no child,
 				 * thus it can to be removed
 				 */
 				parent.delete(child);
-				if (parent.isActive() == false) {
-					// the parent is an internal resource
-					remove(parent);
+				/*
+				 * The method is called recursively on the parent only as
+				 * long as it is a inactive resource.
+				 * Even though the CoapTreeBuilder should be used with
+				 * ActiveCoapResource only, it is not impossible for an user
+				 * to manually adding Resource that are not ActiveCoapResource 
+				 * to it. To avoid exceptions, we cannot simply perform
+				 * ActiveCoapResource parent = (ActiveCoapResource)child.getParent(),
+				 * we must first to the following check:
+				 */
+				if (parent instanceof ActiveCoapResource){
+					activeParent = (ActiveCoapResource)parent;
+					if (activeParent.isActive() == false) {
+						// the parent is an inactive resource
+						remove(activeParent);
+					}
 				}
-
 			} else {
 				/*
-				 * If the resource is an internal resource and it has some
+				 * If the resource is an inactive resource and it has some
 				 * children, it must not be removed
 				 */
 				return;
@@ -346,12 +361,25 @@ public class CoapTreeBuilder {
 			if (child.getChildren().isEmpty()) {
 				/*
 				 * The resource is an active resource with no children, thus we
-				 * can delete it and, iff the father is an internal resource
+				 * can delete it and, iff the father is an inactive resource
 				 */
 				parent.delete(child);
-				if (parent.isActive() == false) {
-					// the parent is an internal resource
-					remove(parent);
+				/*
+				 * The method is called recursively on the parent only as
+				 * long as it is a inactive resource.
+				 * Even though the CoapTreeBuilder should be used with
+				 * ActiveCoapResource only, it is not impossible for an user
+				 * to manually adding Resource that are not ActiveCoapResource 
+				 * to it. To avoid exceptions, we cannot simply perform
+				 * ActiveCoapResource parent = (ActiveCoapResource)child.getParent(),
+				 * we must first to the following check:
+				 */
+				if (parent instanceof ActiveCoapResource){
+					activeParent = (ActiveCoapResource)parent;
+					if (activeParent.isActive() == false) {
+						// the parent is an inactive resource
+						remove(activeParent);
+					}
 				}
 			} else {
 				/*
@@ -364,15 +392,15 @@ public class CoapTreeBuilder {
 						(defaultVisibility == VisibilityPolicy.ALL_VISIBLE)
 						? true : false;
 
-				ActiveCoapResource newInternalResource = new ActiveCoapResource(
+				ActiveCoapResource newInactiveResource = new ActiveCoapResource(
 						child.getName(), false, visibility);
 
 				for (Resource son : child.getChildren()) {
-					newInternalResource.add(son);
+					newInactiveResource.add(son);
 				}
 
 				parent.delete(child);
-				parent.add(newInternalResource);
+				parent.add(newInactiveResource);
 
 			}
 		}

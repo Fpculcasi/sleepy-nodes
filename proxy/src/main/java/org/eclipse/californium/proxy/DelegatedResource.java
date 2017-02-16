@@ -15,7 +15,9 @@
 package org.eclipse.californium.proxy;
 
 import org.eclipse.californium.core.coap.CoAP;
+import org.eclipse.californium.core.coap.CoAP.Code;
 import org.eclipse.californium.core.coap.CoAP.ResponseCode;
+import org.eclipse.californium.core.network.Exchange;
 import org.eclipse.californium.core.server.resources.CoapExchange;
 
 import static org.eclipse.californium.core.coap.MediaTypeRegistry.APPLICATION_LINK_FORMAT;
@@ -158,26 +160,13 @@ public class DelegatedResource extends ActiveCoapResource {
 	 */
 	@Override
 	public void handleGET(CoapExchange exchange) {
-		if (!isVisible()) {
-			/*
-			 * The resource is active but it has not been initialized yet. Thus,
-			 * depending of whether the request came from the owner of the
-			 * resource or from another node, the answer will respectively be
-			 * METHOD_NOT_ALLOWED or NOT_FOUND.
-			 */
-			if (container.getSPIpAddress()
-					.equals(exchange.getSourceAddress())) {
-				exchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
-			} else {
-				exchange.respond(CoAP.ResponseCode.NOT_FOUND);
-			}
-		} else {
-			/*
-			 * The resource is active and visibile, this it is inizialized. Its
-			 * state can be returned.
-			 */
-			exchange.respond(CoAP.ResponseCode.CONTENT, value);
-		}
+		/*
+		 * The resource is active and visibile, thus it is inizialized. Its
+		 * state can be returned.
+		 * An GET request issued on an invisible DelegatedResource would
+		 * be intercepted and answered by the handleRequest() method.
+		 */
+		exchange.respond(CoAP.ResponseCode.CONTENT, value);
 	}
 
 	/**
@@ -275,8 +264,8 @@ public class DelegatedResource extends ActiveCoapResource {
 				 */
 				response = Utilities.checkChanges(container, null);
 
-				System.out.println("List of changes made to '" + getName()
-						+ "' by different endpoints: " + response);
+				System.out.println("List of resources modified"
+						+ " by different endpoints: " + response);
 
 				if (!isVisible()) { // not initialized yet
 					System.out.println("Resource '" + getName()
@@ -336,21 +325,6 @@ public class DelegatedResource extends ActiveCoapResource {
 	 */
 	@Override
 	public void handlePOST(CoapExchange exchange) {
-		if (!isVisible()) {
-			/*
-			 * The resource is active but it has not been initialized yet. Thus,
-			 * depending of whether the request came from the owner of the
-			 * resource or from another node, the answer will respectively be
-			 * METHOD_NOT_ALLOWED or NOT_FOUND.
-			 */
-			if (container.getSPIpAddress()
-					.equals(exchange.getSourceAddress())) {
-				exchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
-			} else {
-				exchange.respond(CoAP.ResponseCode.NOT_FOUND);
-			}
-		}
-
 		String response = null;
 
 		// if the asker is the delegating sleepy node
@@ -383,25 +357,65 @@ public class DelegatedResource extends ActiveCoapResource {
 	 */
 	@Override
 	public void handleDELETE(CoapExchange exchange) {
-		if (!isVisible()) {
-			/*
-			 * The resource is active but it has not been initialized yet. Thus,
-			 * depending of whether the request came from the owner of the
-			 * resource or from another node, the answer will respectively be
-			 * METHOD_NOT_ALLOWED or NOT_FOUND.
-			 */
-			if (container.getSPIpAddress()
-					.equals(exchange.getSourceAddress())) {
-				exchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
-			} else {
-				exchange.respond(CoAP.ResponseCode.NOT_FOUND);
+		/*
+		 * The resource is initialized. This method is not implemented since
+		 * resource deletion is manager by means of lifetime
+		 */
+		exchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
+	}
+	
+	/**
+	 * handleRequest() method has been overridden in order to handle the
+	 * presence of inactive resources. Those resources are used internally in
+	 * the resource tree in order to make the initialized resources - that is,
+	 * in general, the most external ones in the tree - reachable,
+	 * but since their creation was not explicitly requested,
+	 * the are not reachable from the outside.
+	 * 
+	 * @param exchange
+	 *            an object storing useful information regarding the request,
+	 *            accessible with user-friendly API
+	 */
+	@Override
+	public void handleRequest(final Exchange exchange) {
+		CoapExchange coapExchange = new CoapExchange(exchange, this);
+		Code code = coapExchange.getRequestCode();
+		System.out.println("[DelegatedResource.handleRequest]: "
+				+ "visibility is " + isVisible()
+				+ ", code is " + code
+				+ ", is owner is " + container.getSPIpAddress().equals(coapExchange.getSourceAddress()));
+		if (isVisible()) {
+			// If the resource is active, handlers are called.
+			switch (code) {
+			case GET:
+				handleGET(coapExchange);
+				break;
+			case POST:
+				handlePOST(coapExchange);
+				break;
+			case PUT:
+				handlePUT(coapExchange);
+				break;
+			case DELETE:
+				handleDELETE(coapExchange);
+				break;
 			}
 		} else {
-			/*
-			 * The resource is initialized. This method is not implemented since
-			 * resource deletion is manager by means of lifetime
-			 */
-			exchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
+			//the resource is invisible, i.e. it has not been initialized yet
+			if (container.getSPIpAddress().equals(coapExchange.getSourceAddress()) == false) {
+				// the resource is uninitialized and the request comes from 
+				// a node different from the delegating one
+				coapExchange.respond(CoAP.ResponseCode.NOT_FOUND);
+			} else {
+				// the resource is uninitialized and the request comes from
+				// the owner of the resource. Only PUT method is allowed 
+				// (useful for resource initialization)
+				if (code == code.PUT){
+					handlePUT(coapExchange);
+				} else {
+					coapExchange.respond(CoAP.ResponseCode.METHOD_NOT_ALLOWED);
+				}
+			}			
 		}
 	}
 

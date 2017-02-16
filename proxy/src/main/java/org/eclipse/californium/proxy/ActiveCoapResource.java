@@ -26,8 +26,7 @@ import org.eclipse.californium.core.server.resources.CoapExchange;
  * nodes delegating resources to proxies, has been delegated to a proxy, instead
  * a resource is said to be inactive if it has not been delegated and it exists
  * for the only purpose of making a child resource reachable. Inactive resources
- * are not reachable from regular nodes and thus are also called "internal
- * resources".
+ * are not reachable from regular nodes.
  * 
  * The dirtiness concept is intended to be used for keeping trace if a resource
  * has been modified or not. For example, in the context of sleepy nodes
@@ -37,8 +36,8 @@ import org.eclipse.californium.core.server.resources.CoapExchange;
 public class ActiveCoapResource extends CoapResource {
 
 	/*
-	 * Indicates whether the resource is active or inactive (internal). An
-	 * internal resource is not reachable from the outside and created with the
+	 * Indicates whether the resource is active or inactive. An
+	 * inactive resource is not reachable from the outside and created with the
 	 * only purpose of making a child resource reachable from the outside.
 	 */
 	private boolean active;
