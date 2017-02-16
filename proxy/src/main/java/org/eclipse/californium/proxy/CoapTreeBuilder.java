@@ -16,21 +16,18 @@
 package org.eclipse.californium.proxy;
 
 import org.eclipse.californium.core.CoapResource;
-import org.eclipse.californium.core.coap.CoAP;
-import org.eclipse.californium.core.server.resources.CoapExchange;
 import org.eclipse.californium.core.server.resources.Resource;
 
 /**
  * CoapTreeBuilder is a helper class for handling a subtree of
  * {@link ActiveCoapResource}. It's useful when dealing with resources having
- * path-like names. Every CoapTreeBuilder has an associated root and 
- * an associated visibility policy.
+ * path-like names. Every CoapTreeBuilder has an associated root and an
+ * associated visibility policy.
  * <p>
  * An user willing to create an ActiveCoapResource with a path-like name, like
  * "/a/b/c" and make it reachable from the outside is supposed to do the
  * following:<br>
- * - to create a CoapTreeBuilder, with the the intended root and
- * visibility,<br>
+ * - to create a CoapTreeBuilder, with the the intended root and visibility,<br>
  * - to create the ActiveCoapResource (the name will be overridden,<br>
  * - to call the <tt>add()</tt> method on the CoapTreeBuilder instance,
  * specifying the new resource and its complete name.<br>
@@ -65,12 +62,11 @@ public class CoapTreeBuilder {
 	/*
 	 * ActiveCoapResource automatically created inside the CoapTreeBuilder are
 	 * provided with this visibility. This may happen both during <tt>add()</tt>
-	 * (if the user do now explicitly specifies another policy)
-	 * and <tt>delete()</tt> (for example, given the tree a/b/c, 
-	 * with a root and b,c resources explicitly created by the user, 
-	 * if a delete(b) is issued, b cannot be simply removed, since c 
-	 * would become unreachable, thus an ActiveCoapResource "b" 
-	 * has to be automatically created).
+	 * (if the user do now explicitly specifies another policy) and
+	 * <tt>delete()</tt> (for example, given the tree a/b/c, with a root and b,c
+	 * resources explicitly created by the user, if a delete(b) is issued, b
+	 * cannot be simply removed, since c would become unreachable, thus an
+	 * ActiveCoapResource "b" has to be automatically created).
 	 */
 	private VisibilityPolicy defaultVisibility;
 
@@ -78,10 +74,10 @@ public class CoapTreeBuilder {
 	 * Creates a CoapTreeBuilder with the given root and visibility policy.
 	 * 
 	 * @param root
-	 * 			the root of the CoapTreeBuilder
+	 *            the root of the CoapTreeBuilder
 	 * @param visibility
-	 * 			the visibility policy to be used in case of automatic creation
-	 * 			of ActiveCoapResources
+	 *            the visibility policy to be used in case of automatic creation
+	 *            of ActiveCoapResources
 	 */
 	public CoapTreeBuilder(ActiveCoapResource root,
 			VisibilityPolicy visibility) {
@@ -92,8 +88,8 @@ public class CoapTreeBuilder {
 	/**
 	 * Return the visibility policy associated with the CoapTreeBuilder instance
 	 * 
-	 * @return
-	 * 		the visibility policy associated with the CoapTreeBuilder instance
+	 * @return the visibility policy associated with the CoapTreeBuilder
+	 *         instance
 	 */
 	public VisibilityPolicy getVisibility() {
 		return defaultVisibility;
@@ -101,11 +97,11 @@ public class CoapTreeBuilder {
 
 	/*
 	 * InfoPath is a class used internally in the add method in order to
-	 * simplify the handling of the path. The add method scan one piece of
-	 * the path at a time, and at each iteration consider only a single
-	 * piece, thus this class store the remainingPath, the piece of path
-	 * being currently examined, and offers method to 'remove' the first piece
-	 * of the path from the remaining path and making it the 'current' one.
+	 * simplify the handling of the path. The add method scan one piece of the
+	 * path at a time, and at each iteration consider only a single piece, thus
+	 * this class store the remainingPath, the piece of path being currently
+	 * examined, and offers method to 'remove' the first piece of the path from
+	 * the remaining path and making it the 'current' one.
 	 */
 	private class InfoPath {
 		// Path that will be traversed
@@ -149,8 +145,8 @@ public class CoapTreeBuilder {
 	}
 
 	/*
-	 * Method that check the correctness of the parameter.
-	 * In case problems are detected 'false' is returned.
+	 * Method that check the correctness of the parameter. In case problems are
+	 * detected 'false' is returned.
 	 */
 	private boolean parametersAreValid(String path) {
 
@@ -161,16 +157,16 @@ public class CoapTreeBuilder {
 	}
 
 	/**
-	 * Builds a subtree of resources resembling the given path, with the passed 
+	 * Builds a subtree of resources resembling the given path, with the passed
 	 * newResource as last resource of this path, using the CoapTreeBuilder
 	 * VisibilityPolicy, and adds it as child of the root. The resource
 	 * representing the final piece of the path must be built by the user and
-	 * passed as argument to this function, that will take care of adding it
-	 * as child of the resource representing the penultimate piece of the path.
+	 * passed as argument to this function, that will take care of adding it as
+	 * child of the resource representing the penultimate piece of the path.
 	 * 
 	 * @param path
-	 *            The path containing the name of the resources to be created or,
-	 *            if already existing, traversed.
+	 *            The path containing the name of the resources to be created
+	 *            or, if already existing, traversed.
 	 * @param root
 	 *            The resource starting from which the subtree will be built. If
 	 *            you would like the subtree to start from the root of the
@@ -180,18 +176,18 @@ public class CoapTreeBuilder {
 	public boolean add(ActiveCoapResource newResource, String path) {
 		return add(newResource, path, defaultVisibility);
 	}
-	
+
 	/**
-	 * Builds a subtree of resources resembling the given path, with the passed 
+	 * Builds a subtree of resources resembling the given path, with the passed
 	 * newResource as last resource of this path, using the given
 	 * VisibilityPolicy, and adds it as child of the root. The resource
 	 * representing the final piece of the path must be built by the user and
-	 * passed as argument to this function, that will take care of adding it
-	 * as child of the resource representing the penultimate piece of the path.
+	 * passed as argument to this function, that will take care of adding it as
+	 * child of the resource representing the penultimate piece of the path.
 	 * 
 	 * @param path
-	 *            The path containing the name of the resources to be created or,
-	 *            if already existing, traversed.
+	 *            The path containing the name of the resources to be created
+	 *            or, if already existing, traversed.
 	 * @param root
 	 *            The resource starting from which the subtree will be built. If
 	 *            you would like the subtree to start from the root of the
@@ -293,12 +289,7 @@ public class CoapTreeBuilder {
 			newResource = new ActiveCoapResource(resourceName, false, true);
 			break;
 		case ALL_INVISIBLE:
-			newResource = new ActiveCoapResource(resourceName, false, false) {
-				@Override
-				public void handleGET(CoapExchange exchange) {
-					exchange.respond(CoAP.ResponseCode.NOT_FOUND);
-				}
-			};
+			newResource = new ActiveCoapResource(resourceName, false, false);
 			break;
 		}
 		father.add(newResource);
@@ -309,12 +300,11 @@ public class CoapTreeBuilder {
 	}
 
 	/**
-	 * The remove method removes the passed child if possible.
-	 * If the resource has some child, it is not deleted (if internal) or is
-	 * deleted and replaced with an internal resource (if active).
-	 * If the passed resource is deleted, and if his its parent is nor an
-	 * active resource nor the root of the tree, the method is recursively 
-	 * called on the father resource.
+	 * The remove method removes the passed child if possible. If the resource
+	 * has some child, it is not deleted (if internal) or is deleted and
+	 * replaced with an internal resource (if active). If the passed resource is
+	 * deleted, and if his its parent is nor an active resource nor the root of
+	 * the tree, the method is recursively called on the father resource.
 	 * 
 	 * @param child
 	 *            The resource to be removed
@@ -370,7 +360,8 @@ public class CoapTreeBuilder {
 				 * Then, we have to remove this resource from his parent and
 				 * replace it with the newly created resource.
 				 */
-				boolean visibility = (defaultVisibility == VisibilityPolicy.ALL_VISIBLE)
+				boolean visibility = 
+						(defaultVisibility == VisibilityPolicy.ALL_VISIBLE)
 						? true : false;
 
 				ActiveCoapResource newInternalResource = new ActiveCoapResource(

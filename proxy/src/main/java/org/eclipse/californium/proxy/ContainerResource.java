@@ -64,8 +64,8 @@ public class ContainerResource extends ActiveCoapResource {
 			getAttributes().addAttribute(attr,
 					attributes.getAttributeValues(attr).get(0));
 		}
-	}	
-	
+	}
+
 	/**
 	 * Get the CoapTreeBuilder instance associated with this ContainerResource.
 	 * 
@@ -74,13 +74,12 @@ public class ContainerResource extends ActiveCoapResource {
 	public CoapTreeBuilder getCoapTreeBuilder() {
 		return coapTreeBuilder;
 	}
-	
+
 	/**
 	 * Get the spIpAddress field, representing the IP address of the sleepy node
 	 * associated with this ContainerResource instance.
 	 * 
-	 * @return
-	 * 		the snIpAddress
+	 * @return the snIpAddress
 	 */
 	public InetAddress getSPIpAddress() {
 		return snIpAddress;
@@ -93,7 +92,7 @@ public class ContainerResource extends ActiveCoapResource {
 	 * application/link-format.
 	 * 
 	 * @param exchange
-	 *            the exchange
+	 * 		The exchange object that handles requests/responses
 	 */
 	@Override
 	public void handleGET(CoapExchange exchange) {
@@ -106,16 +105,17 @@ public class ContainerResource extends ActiveCoapResource {
 	/**
 	 * handlePOST is used by the delegating sleepy node to retrieve the list of
 	 * resources it has delegated which have been modified by someone else (like
-	 * a regular node for configuring purpose). 
-	 * The result use - if any - the queries specified in the request in
-	 * order to filter the result.
-	 * This method may only be called by the sleepy node associated with this
+	 * a regular node for configuring purpose). The result use - if any - the
+	 * queries specified in the request in order to filter the result. This
+	 * method may only be called by the sleepy node associated with this
 	 * ContainerResource
+	 * 
+	 * @param exchange
+	 * 		The exchange object that handles requests/responses
 	 */
 	@Override
 	public void handlePOST(CoapExchange exchange) {
 		String response = null;
-		ResponseCode code;
 
 		if (getSPIpAddress().equals(exchange.getSourceAddress())) {
 			/*
@@ -126,11 +126,13 @@ public class ContainerResource extends ActiveCoapResource {
 			List<String> queries = exchange.getRequestOptions().getUriQuery();
 			response = Utilities.checkChanges(this, queries);
 			if (response != null) {
-				// At least one resource has been modified: response code CHANGED
-				code = ResponseCode.CHANGED;
+				// At least one resource has been modified: response code
+				// CHANGED
+				exchange.respond(ResponseCode.CHANGED, response,
+						APPLICATION_LINK_FORMAT);
 			} else {
 				// No resource has been modified: response code VALID
-				code = ResponseCode.VALID;
+				exchange.respond(ResponseCode.VALID);
 			}
 
 		} else {
@@ -138,15 +140,7 @@ public class ContainerResource extends ActiveCoapResource {
 			 * The request comes from a node different from the owner of this
 			 * resource, and thus must not be allowed.
 			 */
-			code = ResponseCode.METHOD_NOT_ALLOWED;
-		}
-
-		
-		// build a response
-		if (response == null) {
-			exchange.respond(code);
-		} else {
-			exchange.respond(code, response, APPLICATION_LINK_FORMAT);
+			exchange.respond(ResponseCode.METHOD_NOT_ALLOWED);
 		}
 	}
 

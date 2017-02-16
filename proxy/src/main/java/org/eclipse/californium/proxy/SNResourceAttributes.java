@@ -22,6 +22,11 @@ import java.util.Set;
 import org.eclipse.californium.core.coap.LinkFormat;
 import org.eclipse.californium.core.server.resources.ResourceAttributes;
 
+/**
+ * SNResourceAttributes is an extension to Californium ResourceAttributes class
+ * in order to add the functionalities for getting and setting the 
+ * EP attribute.
+ */
 public class SNResourceAttributes extends ResourceAttributes {
 
 	public SNResourceAttributes() {
@@ -54,6 +59,7 @@ public class SNResourceAttributes extends ResourceAttributes {
 	/**
 	 * Generate a string containing the attribute pairs key-value
 	 */
+	@Override
 	public String toString() {
 		String buff = "";
 		Set<String> keys = getAttributeKeySet();

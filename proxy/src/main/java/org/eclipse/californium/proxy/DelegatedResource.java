@@ -28,33 +28,32 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * DelegatedResource represent a resource delegated by a sleepy node.
- * It offer methods<br>
- * - for retrieving the state (if any) of the resource 
- * it represent (<tt>handleGET()</tt>)<br>
- * - for initializing the delegated resource so that the state 
- * becomes meaningful (<tt>handlePUT()</tt>)<br>
+ * DelegatedResource represent a resource delegated by a sleepy node. It offer
+ * methods<br>
+ * - for retrieving the state (if any) of the resource it represent
+ * (<tt>handleGET()</tt>)<br>
+ * - for initializing the delegated resource so that the state becomes
+ * meaningful (<tt>handlePUT()</tt>)<br>
  * - for updating the delegated resource value (<tt>handlePUT()</tt>), and for
  * retrieving the list of resources that has been delegated by the sleepy node
  * but have been modified by someone else (this make sense for example for
  * regular nodes writing resources representing configuration files).<br>
  * <p>
- * This last operation may be achieved with <tt>handlePUT()</tt> or 
- * <tt>handlePOST()</tt>.
- * The <tt>handlePUT()</tt> allow to updates a resources and contextually
- * retrieve the ENTIRE list of "dirty" resource, while the <tt>handlePOST()</tt>
- * does not perform contextual updates but its retrieving capabilities are
- * more powerful: the response may include only the "dirty" resources
- * having the URI of the requested delegated resource as prefix and
+ * This last operation may be achieved with <tt>handlePUT()</tt> or
+ * <tt>handlePOST()</tt>. The <tt>handlePUT()</tt> allow to updates a resources
+ * and contextually retrieve the ENTIRE list of "dirty" resource, while the
+ * <tt>handlePOST()</tt> does not perform contextual updates but its retrieving
+ * capabilities are more powerful: the response may include only the "dirty"
+ * resources having the URI of the requested delegated resource as prefix and
  * satisfying the given queries.
  * <p>
- * A sleepy node, at initialization of update time, may specify a lifetime
- * for a resource. If e.g. the lifetime is 3600, it means that the sleepy
- * node owner of the resource is supposed to send updates at least every
- * 3600 seconds in order for the resource at the proxy to be valid. If the
- * timeout expires, the <tt>CoapTreeBuilder.remove()</tt> method is called
- * on the expired resource. Concurrent update requests and lifetime 
- * expiration are supported, and handled in a thread-safe way.
+ * A sleepy node, at initialization of update time, may specify a lifetime for a
+ * resource. If e.g. the lifetime is 3600, it means that the sleepy node owner
+ * of the resource is supposed to send updates at least every 3600 seconds in
+ * order for the resource at the proxy to be valid. If the timeout expires, the
+ * <tt>CoapTreeBuilder.remove()</tt> method is called on the expired resource.
+ * Concurrent update requests and lifetime expiration are supported, and handled
+ * in a thread-safe way.
  * 
  */
 public class DelegatedResource extends ActiveCoapResource {
@@ -63,25 +62,26 @@ public class DelegatedResource extends ActiveCoapResource {
 	private String value;
 
 	/*
-	 * h1ead of the subtree of resources delegated from the sleepy node
-	 * who is also owner of this resource
+	 * h1ead of the subtree of resources delegated from the sleepy node who is
+	 * also owner of this resource
 	 */
 	private ContainerResource container;
 
 	/* set by timer when timer expires, checked by handlePUT */
 	private boolean expired;
-	
+
 	/* resource lifetime updated by PUT query attribute */
 	private long lifetime;
 
 	private Timer timer;
 	private ExpiredTimerTask currentTimerTask;
-	
-	/* Lock used in order to guarantee the safety of possible
-	 * concurrent changes to the resource (lifetime, state etc)
+
+	/*
+	 * Lock used in order to guarantee the safety of possible concurrent changes
+	 * to the resource (lifetime, state etc)
 	 */
 	private Lock l = new ReentrantLock();
-	
+
 	/**
 	 * Instantiates a new DelegatedResource with the given name, visibility,
 	 * attributes and the given ContainerResource as container.
@@ -94,19 +94,18 @@ public class DelegatedResource extends ActiveCoapResource {
 	 * @param attributes
 	 *            list of attributes of the resource
 	 * @param container
-	 * 			  the ContainerResource containing all the resources 
-	 * 			  delegated by the sleepy node which is also the owner
-	 * 			  of this resource. 
+	 *            the ContainerResource containing all the resources delegated
+	 *            by the sleepy node which is also the owner of this resource.
 	 */
 	public DelegatedResource(String name, boolean isVisible,
 			SNResourceAttributes attributes, ContainerResource container) {
 		super(name, true, isVisible);
 
 		this.container = container;
-		
+
 		// initially, the resource is not expired
 		expired = false;
-		
+
 		// initially, the lifetime is not set
 		lifetime = -1;
 
@@ -115,7 +114,7 @@ public class DelegatedResource extends ActiveCoapResource {
 			getAttributes().addAttribute(attr,
 					attributes.getAttributeValues(attr).get(0));
 		}
-	}	
+	}
 
 	/**
 	 * TimerTask that implement a interrupt mechanism. As soon as timer expires
@@ -134,11 +133,11 @@ public class DelegatedResource extends ActiveCoapResource {
 			l.lock();
 			if (interrupt.get()) {
 				/*
-				 * The following sequence of events happened: the resource
-				 * timer expired, thus the task started, but in the middle of 
-				 * this process a put request arrived at the resource from
-				 * his owner and set the interrupt flag of the ExpiredTimerTask.
-				 * Thus, the ExpiredTimerTask has to be canceled.
+				 * The following sequence of events happened: the resource timer
+				 * expired, thus the task started, but in the middle of this
+				 * process a put request arrived at the resource from his owner
+				 * and set the interrupt flag of the ExpiredTimerTask. Thus, the
+				 * ExpiredTimerTask has to be canceled.
 				 */
 				l.unlock();
 				return;
@@ -151,13 +150,11 @@ public class DelegatedResource extends ActiveCoapResource {
 		}
 	}
 
-
-
 	/**
 	 * Returns the state of the resource stored in 'value' variable
 	 * 
 	 * @param exchange
-	 * 				Structure maintaining informations about the request
+	 *            Structure maintaining informations about the request
 	 */
 	@Override
 	public void handleGET(CoapExchange exchange) {
@@ -185,15 +182,15 @@ public class DelegatedResource extends ActiveCoapResource {
 
 	/**
 	 * handlePUT() modifies the the state of the delegated resource if it has
-	 * been initialized. The first PUT request issued the owner sleepy node 
-	 * perform this initialization, setting it visible and observable.
-	 * A PUT request executed by the owner of the resource with the purpose
-	 * of updating the resource also has the effect of retrieving the list
-	 * of "dirty" resources, i.e. the list of resource delegated by the
-	 * sleepy node but modified by other nodes (e.g. configuration files).
+	 * been initialized. The first PUT request issued the owner sleepy node
+	 * perform this initialization, setting it visible and observable. A PUT
+	 * request executed by the owner of the resource with the purpose of
+	 * updating the resource also has the effect of retrieving the list of
+	 * "dirty" resources, i.e. the list of resource delegated by the sleepy node
+	 * but modified by other nodes (e.g. configuration files).
 	 * 
 	 * @param exchange
-	 * 				Structure maintaining informations about the request
+	 *            Structure maintaining informations about the request
 	 */
 	@Override
 	public void handlePUT(CoapExchange exchange) {
@@ -201,8 +198,8 @@ public class DelegatedResource extends ActiveCoapResource {
 		/*
 		 * all the update operations within the handlePut method have to be
 		 * performed in mutual exclusion, in order to avoid critical races
-		 * between endpoint updates and timer expiration.
-		 * A PUT executed by the owner of the resource 
+		 * between endpoint updates and timer expiration. A PUT executed by the
+		 * owner of the resource
 		 */
 		l.lock();
 
@@ -258,8 +255,8 @@ public class DelegatedResource extends ActiveCoapResource {
 					timer = new Timer();
 					currentTimerTask = new ExpiredTimerTask();
 					timer.schedule(currentTimerTask, lifetime * 1000);
-					System.out.println(getName() + ": Timer started ("
-							+ lifetime + "s)");
+					System.out.println(
+							getName() + ": Timer started (" + lifetime + "s)");
 
 				} else { // no timers running
 					if (lifetime >= 0) { // new lifetime specified
@@ -326,16 +323,16 @@ public class DelegatedResource extends ActiveCoapResource {
 	/**
 	 * handlePOST is used by the delegating sleepy node to retrieve the list of
 	 * resources it has delegated which have been modified by someone else (like
-	 * a regular node for configuring purpose). 
-	 * The behavior resembles the <tt>handlePUT()</tt> method with some difference:<br>
-	 * - the result include only the resources having as prefix the URI of
-	 * this resource;<br>
-	 * - the result use - if any - the queries specified in the request in
-	 * order to filter the result;<br>
+	 * a regular node for configuring purpose). The behavior resembles the
+	 * <tt>handlePUT()</tt> method with some difference:<br>
+	 * - the result include only the resources having as prefix the URI of this
+	 * resource;<br>
+	 * - the result use - if any - the queries specified in the request in order
+	 * to filter the result;<br>
 	 * - no changes to delegated resources occur.
 	 * 
 	 * @param exchange
-	 * 			Structure maintaining informations about the request
+	 *            Structure maintaining informations about the request
 	 */
 	@Override
 	public void handlePOST(CoapExchange exchange) {
@@ -355,7 +352,6 @@ public class DelegatedResource extends ActiveCoapResource {
 		}
 
 		String response = null;
-		ResponseCode code;
 
 		// if the asker is the delegating sleepy node
 		if (container.getSPIpAddress().equals(exchange.getSourceAddress())) {
@@ -368,20 +364,14 @@ public class DelegatedResource extends ActiveCoapResource {
 			List<String> queries = exchange.getRequestOptions().getUriQuery();
 			response = Utilities.checkChanges(this, queries);
 			if (response != null) {
-				code = ResponseCode.CHANGED;
+				exchange.respond(ResponseCode.CHANGED, response,
+						APPLICATION_LINK_FORMAT);
 			} else {
-				code = ResponseCode.VALID;
+				exchange.respond(ResponseCode.VALID);
 			}
 
 		} else {
-			code = ResponseCode.METHOD_NOT_ALLOWED;
-		}
-
-		// build a response
-		if (response == null) {
-			exchange.respond(code);
-		} else {
-			exchange.respond(code, response, APPLICATION_LINK_FORMAT);
+			exchange.respond(ResponseCode.METHOD_NOT_ALLOWED);
 		}
 	}
 

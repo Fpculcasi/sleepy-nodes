@@ -5,9 +5,8 @@ import java.util.List;
 import org.eclipse.californium.core.coap.LinkFormat;
 import org.eclipse.californium.core.server.resources.Resource;
 
-/*
- * This class contains methods used in different classes that
- * do not rely on features of a specific class.
+/**
+ * This class contains static methods useful for the proxy implementation.
  */
 public class Utilities {
 	/*
