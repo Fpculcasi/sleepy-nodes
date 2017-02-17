@@ -12,13 +12,6 @@
  *
  *****************************************************************************/
 
-/**
- * REFERENCES:
- * [1] https://github.com/eclipse/californium/blob/master/californium-core/src/main/java/org/eclipse/californium/core/CoapResource.java#L518
- * 
- * 
- */
-
 package org.eclipse.californium.proxy;
 
 import java.net.InetAddress;
@@ -35,7 +28,7 @@ import static org.eclipse.californium.core.coap.MediaTypeRegistry.APPLICATION_LI
  * This class implements the SP (Sleepy Proxy) resource of the proxy. This
  * resource is the root of the hierarchy in which resources will be stored.
  * 
- * In the constructor: The 'name' is "sp"; the only required attribute is 'rt',
+ * The 'name' is "sp"; the only required attribute is 'rt',
  * resource type. A client performing the discovery of the proxy will filter on
  * rt=core.sp. The SP resource doesn't need to be observable, since its state
  * never changes.
@@ -44,6 +37,12 @@ public class SPResource extends CoapResource {
 
 	private Proxy proxy;
 
+	/**
+	 * Constructs the SP resource for a particular proxy.
+	 * 
+	 * @param proxy
+	 * 		The proxy object on which the SP resource is constructed
+	 */
 	public SPResource(Proxy proxy) {
 		super("sp");
 
@@ -56,10 +55,13 @@ public class SPResource extends CoapResource {
 	}
 
 	/**
-	 * The handleGET method handles GET request performed on the SP resource. It
-	 * returns a '2.05 Content' response code, along with a payload including
-	 * the name and the list of the attribute-value pairs of the resource's
-	 * attributes.
+	 * The handleGET method handles GET request performed on the SP resource. If
+	 * successful, it returns a '2.05 Content' response code, along with 
+	 * a payload including the name and the list of the attribute-value pairs 
+	 * of the resource's attributes, in link-format content.
+	 * 
+	 * @param exchange
+	 * 		The exchange object that handles requests/responses
 	 */
 	@Override
 	public void handleGET(CoapExchange exchange) {
@@ -79,8 +81,14 @@ public class SPResource extends CoapResource {
 	}
 
 	/**
-	 * The handlePOST method handles POST request performed on the SP resource.
-	 * It returns a '2.01 Created Location: /sp/x' response code, ...
+	 * The handlePOST method handles POST requests performed on the SP resource.
+	 * These requests correspond to the resource registration process by a 
+	 * certain sleepy node.
+	 * If successful, it returns a '2.01 Created Location: /sp/x' response code,
+	 * where x is a local identifier for the registering sleepy node.
+	 * 
+	 * @param exchange
+	 * 		The exchange object that handles requests/responses
 	 */
 	@Override
 	public void handlePOST(CoapExchange exchange) {

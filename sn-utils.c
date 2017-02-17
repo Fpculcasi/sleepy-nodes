@@ -1,7 +1,21 @@
+/**
+	* \file
+	*	Sleepy node utility functions.
+	*	
+	* \authors
+	*	Francesco Paolo Culcasi	<fpculcasi@gmail.com> <br>
+	*	Alessandro Martinelli	<a.martinelli1990@gmail.com> <br>
+	*	Nicola Messina		<nicola.messina93@gmail.com> <br>
+	*/
+
 #include "sn-utils.h"
 #include "net/ip/uip.h"
 #include "net/ipv6/uip-ds6.h"
 
+/**
+* Sets the global address of the sleepy-node using a fixed prefix
+* and a EUI-64 based interface ID.
+*/
 void set_global_address(void){
 	uip_ipaddr_t ipaddr;
 	int i;

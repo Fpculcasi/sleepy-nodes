@@ -53,6 +53,10 @@ public class Proxy extends CoapServer {
 	// Counter: accessed atomically to obtain a new identifier
 	private int counter = 0;
 
+	/**
+	 * Constructs a new proxy, initializing an EP map and associating it the
+	 * only resource that the CoapServer directly inherits: the SP resource.
+	 */
 	public Proxy() {
 		super();
 
@@ -79,23 +83,29 @@ public class Proxy extends CoapServer {
 
 		proxy.start();
 	}
-
+	
+	/**
+	 * Starts the proxy.
+	 */
 	@Override
 	public void start() {
 		super.start();
 	}
 
 	/**
-	 * easier to expose the map through a method rather than declaring it as
-	 * public
+	 * Gets the map of base paths for currently registered sleepy nodes.
 	 * 
-	 * @return the map of base paths
+	 * @return the map of base paths for the registered nodes
 	 */
 	public Map<String, ContainerResource> getEPs() {
 		return EPs;
 	}
 
 	/* Synchronous because multiple threads access counter */
+	/**
+	 * Atomically returns a new EP identifier.
+	 * @return the new generated identifier
+	 */
 	public synchronized int newEPId() {
 		return counter++;
 	}

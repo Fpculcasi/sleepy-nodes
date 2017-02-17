@@ -21,37 +21,55 @@ import org.eclipse.californium.core.network.Exchange;
 import org.eclipse.californium.core.server.resources.CoapExchange;
 
 /**
- * ActiveCoapResource defines a resource that can be marked as active/inactive.
- * A resource is "active" if it has been delegated, in opposition to inactive
- * resources generated in order to delegated resources to be reachable from the
- * outside. The resource is marked as dirty when it's accessed, i.e. after an
- * update operation.
+ * ActiveCoapResource adds to CoapResource the concepts of activeness and
+ * dirtiness. An active resource is a resource that, in the context of sleepy
+ * nodes delegating resources to proxies, has been delegated to a proxy, instead
+ * a resource is said to be inactive if it has not been delegated and it exists
+ * for the only purpose of making a child resource reachable. Inactive resources
+ * are not reachable from regular nodes.
+ * 
+ * The dirtiness concept is intended to be used for keeping trace if a resource
+ * has been modified or not. For example, in the context of sleepy nodes
+ * delegating resources to proxies, a delegated resource is marked as dirty when
+ * it is modified by a node excepts its owner.
  */
 public class ActiveCoapResource extends CoapResource {
-	private boolean active; // false if internal node
-	private boolean dirty; 	// true if the resource has been updated since
-							// either the last PUT request from sleepy node or
-							// the last call to the modification check interface
+
+	/*
+	 * Indicates whether the resource is active or inactive. An
+	 * inactive resource is not reachable from the outside and created with the
+	 * only purpose of making a child resource reachable from the outside.
+	 */
+	private boolean active;
+
+	/*
+	 * Indicates whether a resource has been modified or not. In the context of
+	 * sleepy nodes delegating resources to proxies, a delegated resource is
+	 * marked as dirty when it is modified by a node excepts its owner.
+	 */
+	private boolean dirty;
 
 	/**
-	 * Like the base constructor but the resource is assumed to be visible
+	 * Constructs a new resource with the specified name and active/inactive
+	 * state. The resource is assumed to be visible.
 	 * 
 	 * @param name
 	 *            resource name
 	 * @param active
-	 *            flag used to set the activity/inactivity
+	 *            flag used to set the active/inactive state
 	 */
 	public ActiveCoapResource(String name, boolean active) {
 		this(name, active, true);
 	}
 
 	/**
-	 * Base constructor.
+	 * Constructs a new resource with the specified name, active/inactive state
+	 * and visible/invisible state.
 	 * 
 	 * @param name
 	 *            resource name
 	 * @param active
-	 *            flag used to set the activity/inactivity
+	 *            flag used to set the active/inactive state
 	 * @param visible
 	 *            flag used to set the visibility of the resource
 	 */
@@ -62,18 +80,24 @@ public class ActiveCoapResource extends CoapResource {
 	}
 
 	/**
-	 * Returns the "active" flag
+	 * Returns the value of the "active" flag
 	 */
 	public boolean isActive() {
 		return active;
 	}
 
+	/**
+	 * Set this resource with the specified dirtiness state
+	 * 
+	 * @param dirty
+	 *            true if dirty
+	 */
 	public void setDirty(boolean dirty) {
 		this.dirty = dirty;
 	}
 
 	/**
-	 * Returns the "dirty" flag
+	 * Returns the values of the "dirty" flag
 	 */
 	public boolean isDirty() {
 		return dirty;
@@ -82,17 +106,20 @@ public class ActiveCoapResource extends CoapResource {
 	/**
 	 * handleRequest() method has been overridden in order to handle the
 	 * presence of inactive resources. Those resources are used internally in
-	 * the resource tree with the aims of make the leaves of the tree reachable,
-	 * but since they were not explicitly created, the are not reachable from
-	 * the outside.
+	 * the resource tree in order to make the initialized resources - that is,
+	 * in general, the most external ones in the tree - reachable,
+	 * but since their creation was not explicitly requested,
+	 * the are not reachable from the outside.
 	 * 
 	 * @param exchange
-	 *            the exchange with the request
+	 *            an object storing useful information regarding the request,
+	 *            accessible with user-friendly API
 	 */
 	@Override
 	public void handleRequest(final Exchange exchange) {
 		CoapExchange coapExchange = new CoapExchange(exchange, this);
 		if (isActive()) {
+			// If the resource is active, handlers are called.
 			Code code = coapExchange.getRequestCode();
 			switch (code) {
 			case GET:
@@ -109,6 +136,9 @@ public class ActiveCoapResource extends CoapResource {
 				break;
 			}
 		} else {
+			/* If the resource is inactive, it should not be reachable
+			 * from the outside.
+			 */
 			coapExchange.respond(CoAP.ResponseCode.NOT_FOUND);
 		}
 	}
