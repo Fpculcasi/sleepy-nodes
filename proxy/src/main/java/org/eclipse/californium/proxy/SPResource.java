@@ -12,13 +12,6 @@
  *
  *****************************************************************************/
 
-/**
- * REFERENCES:
- * [1] https://github.com/eclipse/californium/blob/master/californium-core/src/main/java/org/eclipse/californium/core/CoapResource.java#L518
- * 
- * 
- */
-
 package org.eclipse.californium.proxy;
 
 import java.net.InetAddress;
@@ -46,6 +39,7 @@ public class SPResource extends CoapResource {
 
 	/**
 	 * Constructs the SP resource for a particular proxy.
+	 * 
 	 * @param proxy
 	 * 		The proxy object on which the SP resource is constructed
 	 */

@@ -145,8 +145,8 @@ public class DelegatedResource extends ActiveCoapResource {
 				return;
 			}
 			expired = true;
-			System.out.println("timer expired for resource "
-					+ DelegatedResource.this.getName());
+			System.out.println("[timer] timer expired for '"
+					+ DelegatedResource.this.getName() + "'");
 			container.getCoapTreeBuilder().remove(DelegatedResource.this);
 			l.unlock();
 		}
@@ -197,10 +197,10 @@ public class DelegatedResource extends ActiveCoapResource {
 		ResponseCode code;
 
 		if (expired) {
-			System.out.println("Resource '" + getName() + "' expired.");
+			// resource is expired thus it has been removed from the tree
+			System.out.println("[handlePUT]: '" + getName() + "' expired.");
 			System.out.printf(
 					"If you have seen this, you can play superenalotto");
-			// resource is expired thus it has been removed from the tree
 
 			code = CoAP.ResponseCode.NOT_FOUND;
 
@@ -228,8 +228,8 @@ public class DelegatedResource extends ActiveCoapResource {
 						return;
 					}
 					lifetime = lf;
-					System.out.println(
-							getName() + ": New lifetime = " + lifetime);
+					System.out.println("[handlePUT]: '" +
+							getName() + "' new lifetime = " + lifetime);
 				}
 
 				/* timer restart if lifetime is specified */
@@ -238,14 +238,14 @@ public class DelegatedResource extends ActiveCoapResource {
 					timer.cancel();
 					timer.purge();
 					currentTimerTask.interrupt();
-					System.out.println(
-							getName() + ": Previous timer interrupted");
+					System.out.println("[handlePUT]: '" +
+							getName() + "' previous timer interrupted");
 
 					timer = new Timer();
 					currentTimerTask = new ExpiredTimerTask();
 					timer.schedule(currentTimerTask, lifetime * 1000);
-					System.out.println(
-							getName() + ": Timer started (" + lifetime + "s)");
+					System.out.println("[handlePUT]: '" +
+							getName() + "' timer started (" + lifetime + "s)");
 
 				} else { // no timers running
 					if (lifetime >= 0) { // new lifetime specified
@@ -253,22 +253,12 @@ public class DelegatedResource extends ActiveCoapResource {
 						currentTimerTask = new ExpiredTimerTask();
 						timer.schedule(currentTimerTask, lifetime * 1000);
 
-						System.out.println(getName() + ": First timer started");
+						System.out.println("[handlePUT]: '" + getName() + "' first timer started");
 					}
 				}
 
-				/*
-				 * get the list of "dirty" resources (updated by an endpoint
-				 * different from the delegating sleepy node and not notified
-				 * yet to the owner)
-				 */
-				response = Utilities.checkChanges(container, null);
-
-				System.out.println("List of resources modified"
-						+ " by different endpoints: " + response);
-
 				if (!isVisible()) { // not initialized yet
-					System.out.println("Resource '" + getName()
+					System.out.println("[handlePUT]: '" + getName()
 							+ "' has been initialized");
 					// set as visible (reachable) and observable
 					setObservable(true);
@@ -276,8 +266,17 @@ public class DelegatedResource extends ActiveCoapResource {
 					code = CoAP.ResponseCode.CREATED;
 
 				} else {
+					/*
+					 * get the list of "dirty" resources (updated by an endpoint
+					 * different from the delegating sleepy node and not notified
+					 * yet to the owner). This does not happen during initialization
+					 */
+					response = Utilities.checkChanges(container, null);
+
+					System.out.println("[handlePUT]: List of dirty resources: "
+							 + response);
 					System.out.println(
-							"Resource '" + getName() + "' has been modified");
+							"[handlePUT]: '" + getName() + "' has been modified");
 					code = CoAP.ResponseCode.CHANGED;
 				}
 			} else {/*
@@ -291,8 +290,10 @@ public class DelegatedResource extends ActiveCoapResource {
 					setDirty(true); // set the resource as dirty
 					code = CoAP.ResponseCode.CHANGED;
 				}
-				System.out.println("PUT Request on '" + getName()
-						+ "' from a Regular Node, answered with " + code);
+				/*
+					System.out.println("PUT Request on '" + getName()
+					+ "' from a Regular Node, answered with " + code);
+				 */
 			}
 
 			// notify all the observing node the resource has been updated
@@ -301,7 +302,7 @@ public class DelegatedResource extends ActiveCoapResource {
 
 		l.unlock();
 
-		// build a response
+		// build a response to the request coming from the resource owner
 		if (response == null) {
 			exchange.respond(code);
 		} else {
@@ -380,10 +381,12 @@ public class DelegatedResource extends ActiveCoapResource {
 	public void handleRequest(final Exchange exchange) {
 		CoapExchange coapExchange = new CoapExchange(exchange, this);
 		Code code = coapExchange.getRequestCode();
-		System.out.println("[DelegatedResource.handleRequest]: "
-				+ "visibility is " + isVisible()
-				+ ", code is " + code
-				+ ", is owner is " + container.getSPIpAddress().equals(coapExchange.getSourceAddress()));
+		/*
+		System.out.println("[handleRequest]: "
+				+ "visibility=" + isVisible()
+				+ ", code=" + code
+				+ ", isOwner=" + container.getSPIpAddress().equals(coapExchange.getSourceAddress()));
+		*/
 		if (isVisible()) {
 			// If the resource is active, handlers are called.
 			switch (code) {
