@@ -122,9 +122,8 @@ public class CoapTreeBuilder {
 		}
 
 		public void removeFirst() {
-			// removes the first '/', it will be add by CoapResource
-			// setParent(),
-			// see reference [1]
+			// removes the first '/', it will be added again by in
+			// californium/core/CoapResource.setParent()
 			remainingPath = remainingPath.substring(1);
 			// is resourceName a simple name or a path?
 			int separatorIndex = remainingPath.indexOf('/');
@@ -216,9 +215,9 @@ public class CoapTreeBuilder {
 		InfoPath iPath = new InfoPath(path);
 		while (true) {
 			iPath.removeFirst();
-			System.out.println("[CoapTreeBuilder.add]: "
-					+ "current is " + iPath.current 
-					+ ", remainingPath is " + iPath.remainingPath);
+			System.out.println("[add]: "
+					+ "current=" + iPath.current 
+					+ ", remainingPath=" + iPath.remainingPath);
 			if (iPath.pathParsingFinished()) {
 				// The user, during newResource creation, should have
 				// set all its fields, like visibility, so the only
@@ -243,8 +242,8 @@ public class CoapTreeBuilder {
 
 				if (child != null) {
 					if (!(child instanceof CoapResource)) {
-						System.err.println("Resource " + child.getName()
-								+ " is not a CoapResource: its visibility"
+						System.err.println("[add]: Resource '" + child.getName()
+								+ "' is not a CoapResource, thus its visibility"
 								+ " will not be affected");
 					} else {
 						// The resource already exists. We may need to
@@ -264,9 +263,9 @@ public class CoapTreeBuilder {
 	// Handle already existing resources along the path
 	private void handleExistingResource(CoapResource child,
 			VisibilityPolicy vPolicy) {
-		System.out.println("traversing intermediate resource" + " "
-				+ child.getName() + ", visibility " + child.isVisible()
-				+ " and son of " + child.getParent().getName());
+		System.out.println("[add]: traversing inactive internal resource"
+				+ " '" + child.getName() + "', visibility " + child.isVisible()
+				+ " and son of '" + child.getParent().getName() + "'");
 		// The intermediate resource was already there
 		switch (vPolicy) {
 		case ALL_VISIBLE:
@@ -295,9 +294,9 @@ public class CoapTreeBuilder {
 			break;
 		}
 		father.add(newResource);
-		System.out.println("Created intermediate resource" + " " + resourceName
-				+ ", visibility " + newResource.isVisible() + " and son of "
-				+ father.getName());
+		System.out.println("[add]: created inactive internal resource" + " '" 
+				+ resourceName + "', visibility " + newResource.isVisible() 
+				+ " and son of '" + father.getName() + "'");
 		return newResource;
 	}
 
@@ -332,6 +331,8 @@ public class CoapTreeBuilder {
 				 * thus it can to be removed
 				 */
 				parent.delete(child);
+				System.out.println("[remove]: '" 
+							+ child.getName() + "' removed");
 				/*
 				 * The method is called recursively on the parent only as
 				 * long as it is a inactive resource.
@@ -364,6 +365,8 @@ public class CoapTreeBuilder {
 				 * can delete it and, iff the father is an inactive resource
 				 */
 				parent.delete(child);
+				System.out.println("[remove]: '" 
+						+ child.getName() + "' removed");
 				/*
 				 * The method is called recursively on the parent only as
 				 * long as it is a inactive resource.
