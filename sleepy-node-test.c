@@ -94,11 +94,11 @@ PROCESS_THREAD(sleepy_node, ev, data)
 	proxy = add_proxy(&proxy_addr);
 
 	delegated_counter = initialize_sleepy_node_resource(&res_counter, 
-		res_counter_value, strlen(res_counter_value)+1);
+		res_counter_value, strlen(res_counter_value));
 	delegated_name = initialize_sleepy_node_resource(&res_dev_name, 
 		res_name_value, 0);
 	delegated_counter_increment = initialize_sleepy_node_resource(&res_counter_incr, 
-		res_counter_incr_value, strlen(res_counter_incr_value)+1);
+		res_counter_incr_value, strlen(res_counter_incr_value));
 	delegated_button = initialize_sleepy_node_resource(&res_button, 
 		res_button_value, strlen(res_button_value));
 	
